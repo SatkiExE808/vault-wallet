@@ -1,6 +1,5 @@
 const EthereumWallet = (() => {
-  const INFURA = 'https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161';
-  const ETHERSCAN = 'https://api.etherscan.io/api';
+  const ETH_RPC = 'https://cloudflare-eth.com';
 
   const ERC20_ABI = [
     'function balanceOf(address) view returns (uint256)',
@@ -14,7 +13,7 @@ const EthereumWallet = (() => {
   };
 
   function getProvider() {
-    return new ethers.JsonRpcProvider(INFURA);
+    return new ethers.JsonRpcProvider(ETH_RPC);
   }
 
   async function getETHBalance(address) {
@@ -58,13 +57,11 @@ const EthereumWallet = (() => {
   }
 
   async function deriveAddress(mnemonic) {
-    const child = ethers.HDNodeWallet.fromPhrase(mnemonic).derivePath("m/44'/60'/0'/0/0");
-    return child.address;
+    return ethers.Wallet.fromPhrase(mnemonic).address;
   }
 
   async function derivePrivateKey(mnemonic) {
-    const child = ethers.HDNodeWallet.fromPhrase(mnemonic).derivePath("m/44'/60'/0'/0/0");
-    return child.privateKey;
+    return ethers.Wallet.fromPhrase(mnemonic).privateKey;
   }
 
   return { getETHBalance, getTokenBalance, sendETH, sendToken, deriveAddress, derivePrivateKey };

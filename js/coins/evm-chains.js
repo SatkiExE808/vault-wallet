@@ -47,17 +47,14 @@ const EVMChains = (() => {
     return CHAINS[chainKey]?.coinType ?? 60;
   }
 
-  // Derive address using chain-specific BIP44 coin type
   async function deriveAddress(mnemonic, chainKey) {
-    const ct = coinTypeFor(chainKey);
-    const child = ethers.HDNodeWallet.fromPhrase(mnemonic).derivePath(`m/44'/${ct}'/0'/0/0`);
-    return child.address;
+    void chainKey; // all EVM chains share coin type 60 → same address as ETH
+    return ethers.Wallet.fromPhrase(mnemonic).address;
   }
 
   async function _privateKey(mnemonic, chainKey) {
-    const ct = coinTypeFor(chainKey);
-    const child = ethers.HDNodeWallet.fromPhrase(mnemonic).derivePath(`m/44'/${ct}'/0'/0/0`);
-    return child.privateKey;
+    void chainKey;
+    return ethers.Wallet.fromPhrase(mnemonic).privateKey;
   }
 
   async function getNative(address, chainKey) {
