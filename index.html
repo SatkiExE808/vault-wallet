@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Vault">
+  <meta name="theme-color" content="#f97316">
+  <title>Vault — Crypto Wallet</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Setup overlay -->
+  <div id="setup-screen">
+    <div class="setup-box" id="setup-box"></div>
+  </div>
+
+  <!-- Sidebar -->
+  <div id="sidebar" style="display:none">
+    <div id="logo">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <circle cx="14" cy="14" r="14" fill="#f97316"/>
+        <path d="M9 14l3.5 3.5L19 10" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Vault</span>
+    </div>
+    <div id="coin-list"></div>
+    <div id="sidebar-footer">
+      <button class="btn btn-outline btn-sm" id="settings-btn" style="width:100%;margin-bottom:8px">⚙ Manage Assets</button>
+      <button class="btn btn-outline btn-sm" id="lock-btn" style="width:100%">Lock Wallet</button>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div id="main" style="display:none">
+    <div id="topbar">
+      <h2 id="coin-title">—</h2>
+      <button class="btn btn-outline btn-sm" id="refresh-btn">↻ Refresh</button>
+    </div>
+
+    <div id="content">
+      <!-- Balance card -->
+      <div class="card balance-card">
+        <div class="coin-badge">
+          <span id="bal-icon"></span>
+          <span id="bal-symbol"></span>
+          <span class="network-badge" id="bal-network" style="display:none"></span>
+        </div>
+        <div class="amount" id="bal-amount">—</div>
+        <div class="amount-usd" id="bal-usd"></div>
+        <div class="balance-actions">
+          <button class="btn btn-primary btn-sm" id="receive-tab-btn">Receive</button>
+          <button class="btn btn-outline btn-sm" id="send-tab-btn">Send</button>
+        </div>
+      </div>
+
+      <!-- Tabs card -->
+      <div class="card">
+        <div class="tabs">
+          <div class="tab active" data-tab="receive">Receive</div>
+          <div class="tab" data-tab="send">Send</div>
+        </div>
+        <hr class="divider">
+
+        <div class="tab-content active" id="tab-receive">
+          <div class="qr-container"><div id="qr-output"></div></div>
+          <div class="address-box">
+            <code id="address-display">—</code>
+            <button class="btn btn-outline btn-sm" id="copy-btn">Copy</button>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-send">
+          <p id="send-unavailable" class="text-muted text-sm" style="display:none;padding:12px 0">
+            Sending is not available for this coin.
+          </p>
+          <div id="send-form">
+            <div class="form-group">
+              <label>Recipient Address</label>
+              <input type="text" id="send-to" placeholder="Enter address…" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="form-group">
+              <label>Amount (<span id="send-symbol">—</span>)</label>
+              <input type="number" id="send-amount" placeholder="0.00" min="0" step="any">
+            </div>
+            <button class="btn btn-primary" id="do-send-btn" style="width:100%">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- XMR sync overlay -->
+  <div id="sync-overlay" style="display:none;position:fixed;inset:0;background:rgba(15,17,23,0.92);z-index:200;align-items:center;justify-content:center;flex-direction:column;gap:20px">
+    <div style="text-align:center">
+      <div style="font-size:36px;margin-bottom:12px">ɱ</div>
+      <div id="sync-label" style="font-size:16px;font-weight:600;margin-bottom:6px">Syncing Monero wallet…</div>
+      <div id="sync-pct" style="font-size:28px;font-weight:700;color:#ff6600">0%</div>
+    </div>
+    <div style="width:320px;height:6px;background:#2e3354;border-radius:4px;overflow:hidden">
+      <div id="sync-bar-fill" style="height:100%;background:#ff6600;border-radius:4px;width:0%;transition:width 0.4s"></div>
+    </div>
+    <p style="color:#94a3b8;font-size:13px;text-align:center;max-width:300px">
+      Scanning the blockchain for your outputs.<br>This may take a few minutes.
+    </p>
+  </div>
+
+  <!-- Settings / Manage Assets overlay -->
+  <div id="settings-overlay" style="display:none;position:fixed;inset:0;background:rgba(15,17,23,0.85);z-index:150;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 16px">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:20px;width:480px;max-width:100%;padding:32px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <h2 style="font-size:20px">Manage Assets</h2>
+        <button class="btn btn-outline btn-sm" id="settings-close-btn">Done</button>
+      </div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:8px">Enable or disable networks and tokens.</p>
+      <div id="settings-coin-list"></div>
+    </div>
+  </div>
+
+  <!-- Libraries -->
+  <script src="lib/monero-browser.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.1/ethers.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tronweb@5.3.2/dist/TronWeb.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- Coin modules (utxo.js must load first) -->
+  <script src="js/coins/utxo.js"></script>
+  <script src="js/coins/bitcoin.js"></script>
+  <script src="js/coins/litecoin.js"></script>
+  <script src="js/coins/dogecoin.js"></script>
+  <script src="js/coins/ethereum.js"></script>
+  <script src="js/coins/evm-chains.js"></script>
+  <script src="js/coins/monero.js"></script>
+  <script src="js/coins/tron.js"></script>
+
+  <!-- App -->
+  <script src="js/app.js"></script>
+
+  <!-- PWA service worker -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head><title>Generate Vault Icons</title></head>
+<body style="font-family:sans-serif;padding:20px;background:#0f1117;color:#e2e8f0">
+<h2>Generating Vault icons…</h2>
+<p id="status">Please wait…</p>
+<canvas id="c" style="display:none"></canvas>
+<script>
+function drawIcon(size) {
+  const canvas = document.getElementById('c');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const s = size / 512;
+
+  // Dark background
+  ctx.fillStyle = '#0f1117';
+  ctx.fillRect(0, 0, size, size);
+
+  // Orange circle
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.fillStyle = '#f97316';
+  ctx.fill();
+
+  // White checkmark (same path as the in-app logo, scaled to 512)
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = Math.round(46 * s);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(165 * s, 256 * s);
+  ctx.lineTo(229 * s, 320 * s);
+  ctx.lineTo(347 * s, 183 * s);
+  ctx.stroke();
+
+  return canvas.toDataURL('image/png');
+}
+
+function download(dataUrl, filename) {
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+window.onload = () => {
+  try {
+    const img192 = drawIcon(192);
+    const img512 = drawIcon(512);
+    setTimeout(() => { download(img192, 'icon-192.png'); }, 300);
+    setTimeout(() => { download(img512, 'icon-512.png'); }, 800);
+    document.getElementById('status').innerHTML =
+      '✅ Two files downloaded: <b>icon-192.png</b> and <b>icon-512.png</b><br>' +
+      'Move both files into your <code>icons/</code> folder next to this file.';
+  } catch(e) {
+    document.getElementById('status').textContent = 'Error: ' + e.message;
+  }
+};
+</script>
+</body>
+</html>
