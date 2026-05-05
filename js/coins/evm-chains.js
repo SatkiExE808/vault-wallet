@@ -91,5 +91,13 @@ const EVMChains = (() => {
     return tx.hash;
   }
 
-  return { deriveAddress, getNative, getToken, sendNative, sendToken };
+  async function estimateFee(chainKey, isToken = false) {
+    const feeData = await provider(chainKey).getFeeData();
+    const gasPrice = feeData.gasPrice ?? ethers.parseUnits('10', 'gwei');
+    const gasLimit = isToken ? 65000n : 21000n;
+    const symbols = { BSC: 'BNB', POLYGON: 'POL', AVALANCHE: 'AVAX', ARBITRUM: 'ETH', OPTIMISM: 'ETH', BASE: 'ETH' };
+    return { fee: parseFloat(ethers.formatEther(gasPrice * gasLimit)).toFixed(6), symbol: symbols[chainKey] || 'ETH' };
+  }
+
+  return { deriveAddress, getNative, getToken, estimateFee, sendNative, sendToken };
 })();

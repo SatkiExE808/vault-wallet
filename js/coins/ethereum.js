@@ -70,6 +70,13 @@ const EthereumWallet = (() => {
     return tx.hash;
   }
 
+  async function estimateFee(isToken = false) {
+    const gasPriceHex = await rpcCall('eth_gasPrice', []);
+    const gasPrice = BigInt(gasPriceHex);
+    const gasLimit = isToken ? 65000n : 21000n;
+    return { fee: parseFloat(ethers.formatEther(gasPrice * gasLimit)).toFixed(6), symbol: 'ETH' };
+  }
+
   async function deriveAddress(mnemonic) {
     return ethers.Wallet.fromPhrase(mnemonic).address;
   }
@@ -78,5 +85,5 @@ const EthereumWallet = (() => {
     return ethers.Wallet.fromPhrase(mnemonic).privateKey;
   }
 
-  return { getETHBalance, getTokenBalance, sendETH, sendToken, deriveAddress, derivePrivateKey };
+  return { getETHBalance, getTokenBalance, estimateFee, sendETH, sendToken, deriveAddress, derivePrivateKey };
 })();

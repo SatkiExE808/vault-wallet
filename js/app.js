@@ -312,6 +312,43 @@ const COINS = [
   },
 ];
 
+// ── EVM gas table — which chain each coin is on and which coin pays gas ───────
+const EVM_GAS = {
+  ETH:       { chain: 'ETH',       token: false, feeId: 'ETH'      },
+  USDT_ERC20:{ chain: 'ETH',       token: true,  feeId: 'ETH'      },
+  USDC_ERC20:{ chain: 'ETH',       token: true,  feeId: 'ETH'      },
+  DAI:       { chain: 'ETH',       token: true,  feeId: 'ETH'      },
+  BNB:       { chain: 'BSC',       token: false, feeId: 'BNB'      },
+  USDT_BEP20:{ chain: 'BSC',       token: true,  feeId: 'BNB'      },
+  USDC_BEP20:{ chain: 'BSC',       token: true,  feeId: 'BNB'      },
+  POL:       { chain: 'POLYGON',   token: false, feeId: 'POL'      },
+  USDT_POLY: { chain: 'POLYGON',   token: true,  feeId: 'POL'      },
+  USDC_POLY: { chain: 'POLYGON',   token: true,  feeId: 'POL'      },
+  AVAX:      { chain: 'AVALANCHE', token: false, feeId: 'AVAX'     },
+  USDT_AVAX: { chain: 'AVALANCHE', token: true,  feeId: 'AVAX'     },
+  USDC_AVAX: { chain: 'AVALANCHE', token: true,  feeId: 'AVAX'     },
+  ARB:       { chain: 'ARBITRUM',  token: true,  feeId: 'ARB_ETH'  },
+  ARB_ETH:   { chain: 'ARBITRUM',  token: false, feeId: 'ARB_ETH'  },
+  USDT_ARB:  { chain: 'ARBITRUM',  token: true,  feeId: 'ARB_ETH'  },
+  USDC_ARB:  { chain: 'ARBITRUM',  token: true,  feeId: 'ARB_ETH'  },
+  OP:        { chain: 'OPTIMISM',  token: true,  feeId: 'OP_ETH'   },
+  OP_ETH:    { chain: 'OPTIMISM',  token: false, feeId: 'OP_ETH'   },
+  USDT_OPT:  { chain: 'OPTIMISM',  token: true,  feeId: 'OP_ETH'   },
+  USDC_OPT:  { chain: 'OPTIMISM',  token: true,  feeId: 'OP_ETH'   },
+  BASE_ETH:  { chain: 'BASE',      token: false, feeId: 'BASE_ETH' },
+  USDT_BASE: { chain: 'BASE',      token: true,  feeId: 'BASE_ETH' },
+  USDC_BASE: { chain: 'BASE',      token: true,  feeId: 'BASE_ETH' },
+};
+
+async function estimateEvmFee(coinId) {
+  const g = EVM_GAS[coinId];
+  if (!g) return null;
+  const info = g.chain === 'ETH'
+    ? await EthereumWallet.estimateFee(g.token)
+    : await EVMChains.estimateFee(g.chain, g.token);
+  return { ...info, feeId: g.feeId };
+}
+
 // ── Enabled coins (persisted) ─────────────────────────────────────────────────
 const DEFAULT_ENABLED = new Set(COINS.filter(c => c.defaultEnabled).map(c => c.id));
 
@@ -685,6 +722,22 @@ function updateSendTab() {
     document.getElementById('send-symbol').textContent = coin.symbol;
     document.getElementById('send-to').value = '';
     document.getElementById('send-amount').value = '';
+
+    const feeRow = document.getElementById('send-fee-row');
+    const feeDisplay = document.getElementById('send-fee-display');
+    if (EVM_GAS[coin.id]) {
+      feeRow.style.display = 'block';
+      feeDisplay.textContent = 'Estimating…';
+      delete feeRow.dataset.fee;
+      estimateEvmFee(coin.id).then(info => {
+        feeDisplay.textContent = `~${info.fee} ${info.symbol}`;
+        feeRow.dataset.fee   = info.fee;
+        feeRow.dataset.feeId = info.feeId;
+        feeRow.dataset.token = EVM_GAS[coin.id].token ? '1' : '0';
+      }).catch(() => { feeDisplay.textContent = 'Unable to estimate'; });
+    } else {
+      feeRow.style.display = 'none';
+    }
   }
 }
 
@@ -711,6 +764,20 @@ document.getElementById('send-tab-btn').onclick = () => {
 };
 
 // ── Send ──────────────────────────────────────────────────────────────────────
+document.getElementById('send-max-btn').onclick = () => {
+  const coin = COINS.find(c => c.id === state.active);
+  const balance = parseFloat(state.balances[coin.id] || '0');
+  if (balance <= 0) return;
+  const feeRow = document.getElementById('send-fee-row');
+  const g = EVM_GAS[coin.id];
+  if (g && !g.token && feeRow.dataset.fee) {
+    const fee = parseFloat(feeRow.dataset.fee) * 1.2; // 20% buffer
+    document.getElementById('send-amount').value = Math.max(0, balance - fee).toFixed(6);
+  } else {
+    document.getElementById('send-amount').value = balance.toString();
+  }
+};
+
 document.getElementById('do-send-btn').onclick = async () => {
   const coin = COINS.find(c => c.id === state.active);
   const to  = document.getElementById('send-to').value.trim();
@@ -719,6 +786,28 @@ document.getElementById('do-send-btn').onclick = async () => {
   const btn = document.getElementById('do-send-btn');
   btn.disabled = true; btn.textContent = 'Sending…';
   try {
+    // EVM gas pre-validation
+    const g = EVM_GAS[coin.id];
+    if (g) {
+      try {
+        const feeInfo = await estimateEvmFee(coin.id);
+        if (feeInfo) {
+          const fee = parseFloat(feeInfo.fee) * 1.2; // 20% buffer
+          const feeBal = state.balances[feeInfo.feeId];
+          if (feeBal !== undefined) {
+            if (parseFloat(feeBal) < fee)
+              throw new Error(`Not enough ${feeInfo.symbol} for gas fee. Need ~${feeInfo.fee} ${feeInfo.symbol}`);
+            if (!g.token) {
+              const bal = parseFloat(state.balances[coin.id] || '0');
+              if (parseFloat(amt) + fee > bal)
+                throw new Error(`Insufficient balance for gas. Max sendable: ~${Math.max(0, bal - fee).toFixed(6)} ${coin.symbol}`);
+            }
+          }
+        }
+      } catch(e) {
+        if (e.message.startsWith('Not enough') || e.message.startsWith('Insufficient')) throw e;
+      }
+    }
     const txid = await coin.send(state.mnemonic, to, amt);
     toast(`Sent! TX: ${String(txid).slice(0, 20)}…`);
     document.getElementById('send-to').value = '';
