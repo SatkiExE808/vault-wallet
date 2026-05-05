@@ -183,6 +183,30 @@ const UTXOCrypto = (() => {
     return { witnessVersion: ver, program: new Uint8Array(prog) };
   }
 
+  // ── Bech32 encoding (for bc1q / ltc1q Native SegWit addresses) ───────────────
+  function convertBits(data, from, to, pad = true) {
+    let acc = 0, bits = 0;
+    const result = [], maxv = (1 << to) - 1;
+    for (const val of data) {
+      acc = (acc << from) | val; bits += from;
+      while (bits >= to) { bits -= to; result.push((acc >> bits) & maxv); }
+    }
+    if (pad && bits > 0) result.push((acc << (to - bits)) & maxv);
+    return result;
+  }
+
+  function bech32Encode(hrp, witnessVersion, program) {
+    const data = [witnessVersion, ...convertBits(program, 8, 5)];
+    const values = [..._b32Hrp(hrp), ...data, 0, 0, 0, 0, 0, 0];
+    const poly = _b32Poly(values) ^ 1; // bech32 (not bech32m)
+    const checksum = Array.from({length: 6}, (_, i) => (poly >> (5 * (5 - i))) & 31);
+    return hrp + '1' + [...data, ...checksum].map(d => _BC32[d]).join('');
+  }
+
+  function p2wpkhAddress(pubKeyBytes, hrp) {
+    return bech32Encode(hrp, 0, ripemd160(sha256(pubKeyBytes)));
+  }
+
   // Convert any Bitcoin-family address to its output scriptPubKey
   // bech32Prefix: 'bc' for Bitcoin, 'ltc' for Litecoin, null for Dogecoin
   function addressToScript(addr, bech32Prefix) {
@@ -249,6 +273,74 @@ const UTXOCrypto = (() => {
     return broadcastTx(rawHex);
   }
 
+  // BIP143 Native SegWit (P2WPKH) transaction builder for bc1q / ltc1q addresses
+  async function buildAndSendP2WPKH({ mnemonic, coinType, hrp, toAddress, amountFloat, fetchUTXOs, getFeeRate, broadcastTx }) {
+    const seed = await bip39ToSeed(mnemonic);
+    const child = ethers.HDNodeWallet.fromSeed(seed).derivePath(`m/84'/${coinType}'/0'/0/0`);
+    const signingKey = new ethers.SigningKey(child.privateKey);
+    const pubKeyBytes = hexToBytes(child.publicKey);
+    const hash160 = ripemd160(sha256(pubKeyBytes));
+    const fromAddress = bech32Encode(hrp, 0, hash160);
+    const scriptCode = p2pkhScript(hash160); // 25 bytes: OP_DUP OP_HASH160 <hash160> OP_EQUALVERIFY OP_CHECKSIG
+
+    const utxos = await fetchUTXOs(fromAddress);
+    if (!utxos.length) throw new Error('No spendable UTXOs — address has no confirmed balance');
+
+    const amountSat = Math.round(amountFloat * 1e8);
+    const feeRate = await getFeeRate();
+
+    // P2WPKH vbytes: 10.5 overhead + 68 per input + 31 per output
+    const sorted = [...utxos].sort((a, b) => b.value - a.value);
+    const selected = []; let inputsSat = 0;
+    for (const u of sorted) {
+      selected.push(u); inputsSat += u.value;
+      if (inputsSat >= amountSat + feeRate * Math.ceil(10.5 + 68 * selected.length + 31 * 2)) break;
+    }
+    const fee = Math.ceil(feeRate * (10.5 + 68 * selected.length + 31 * 2));
+    if (inputsSat < amountSat + fee)
+      throw new Error(`Insufficient balance. Need ${((amountSat + fee) / 1e8).toFixed(8)} (incl. fee ~${(fee / 1e8).toFixed(8)})`);
+    const changeSat = inputsSat - amountSat - fee;
+
+    const toScript = addressToScript(toAddress, hrp);
+    const changeScript = new Uint8Array([0x00, 0x14, ...hash160]); // P2WPKH scriptPubKey
+    const outputs = [{ value: amountSat, script: toScript }];
+    const dustThreshold = Math.max(546, feeRate * 31 * 3);
+    if (changeSat >= dustThreshold) outputs.push({ value: changeSat, script: changeScript });
+
+    // BIP143 hashes (SIGHASH_ALL)
+    const hashPrevouts = dsha256(concatBytes(...selected.map(u => concatBytes(hexToBytes(u.txid).reverse(), writeLE32(u.vout)))));
+    const hashSequence = dsha256(concatBytes(...selected.map(() => writeLE32(0xffffffff))));
+    const hashOutputs  = dsha256(concatBytes(...outputs.map(o => concatBytes(writeLE64(o.value), varint(o.script.length), o.script))));
+    const scriptCodeWithLen = concatBytes(varint(scriptCode.length), scriptCode);
+
+    const witnesses = [];
+    for (const utxo of selected) {
+      const outpoint = concatBytes(hexToBytes(utxo.txid).reverse(), writeLE32(utxo.vout));
+      const preimage = concatBytes(
+        writeLE32(1), hashPrevouts, hashSequence,
+        outpoint, scriptCodeWithLen, writeLE64(utxo.value),
+        writeLE32(0xffffffff), hashOutputs, writeLE32(0), writeLE32(1)
+      );
+      const sig = signingKey.sign(dsha256(preimage));
+      const der = derEncode(sig.r.slice(2), sig.s.slice(2));
+      witnesses.push([new Uint8Array([...der, 0x01]), pubKeyBytes]);
+    }
+
+    // Serialize segwit transaction
+    const parts = [writeLE32(1), new Uint8Array([0x00, 0x01])]; // version + marker + flag
+    parts.push(varint(selected.length));
+    for (const u of selected) {
+      parts.push(hexToBytes(u.txid).reverse(), writeLE32(u.vout), varint(0), writeLE32(0xffffffff));
+    }
+    parts.push(varint(outputs.length));
+    for (const o of outputs) parts.push(writeLE64(o.value), varint(o.script.length), o.script);
+    for (const wit of witnesses) { parts.push(varint(wit.length)); for (const item of wit) parts.push(varint(item.length), item); }
+    parts.push(writeLE32(0)); // locktime
+
+    const rawHex = Array.from(concatBytes(...parts)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return broadcastTx(rawHex);
+  }
+
   async function bip39ToSeed(mnemonic) {
     const enc = new TextEncoder();
     const key = await crypto.subtle.importKey('raw', enc.encode(mnemonic.normalize('NFKD')), 'PBKDF2', false, ['deriveBits']);
@@ -271,5 +363,12 @@ const UTXOCrypto = (() => {
     return base58Encode(new Uint8Array([...versioned, ...checksum]));
   }
 
-  return { hexToBytes, sha256, ripemd160, base58Encode, base58Decode, bip39ToSeed, deriveP2PKH, buildAndSendTx, addressToScript };
+  async function deriveP2WPKH(mnemonic, coinType, hrp) {
+    const seed = await bip39ToSeed(mnemonic);
+    const child = ethers.HDNodeWallet.fromSeed(seed).derivePath(`m/84'/${coinType}'/0'/0/0`);
+    return p2wpkhAddress(hexToBytes(child.publicKey), hrp);
+  }
+
+  return { hexToBytes, sha256, ripemd160, base58Encode, base58Decode, bip39ToSeed,
+           deriveP2PKH, deriveP2WPKH, buildAndSendTx, buildAndSendP2WPKH, addressToScript };
 })();

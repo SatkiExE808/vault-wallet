@@ -10,13 +10,13 @@ const BitcoinWallet = (() => {
   }
 
   async function deriveAddress(mnemonic) {
-    try { return await UTXOCrypto.deriveP2PKH(mnemonic, 0, 0x00); }
+    try { return await UTXOCrypto.deriveP2WPKH(mnemonic, 0, 'bc'); }
     catch(e) { console.error('BTC derive:', e); return null; }
   }
 
   async function sendBTC(mnemonic, toAddress, amountBTC) {
-    return UTXOCrypto.buildAndSendTx({
-      mnemonic, coinType: 0, versionByte: 0x00, bech32Prefix: 'bc',
+    return UTXOCrypto.buildAndSendP2WPKH({
+      mnemonic, coinType: 0, hrp: 'bc',
       toAddress, amountFloat: parseFloat(amountBTC),
       fetchUTXOs: async addr => {
         const r = await fetch(`${API}/address/${addr}/utxo`);

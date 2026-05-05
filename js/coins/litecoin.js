@@ -10,13 +10,13 @@ const LitecoinWallet = (() => {
   }
 
   async function deriveAddress(mnemonic) {
-    try { return await UTXOCrypto.deriveP2PKH(mnemonic, 2, 0x30); }
+    try { return await UTXOCrypto.deriveP2WPKH(mnemonic, 2, 'ltc'); }
     catch(e) { console.error('LTC derive:', e); return null; }
   }
 
   async function sendLTC(mnemonic, toAddress, amountLTC) {
-    return UTXOCrypto.buildAndSendTx({
-      mnemonic, coinType: 2, versionByte: 0x30, bech32Prefix: 'ltc',
+    return UTXOCrypto.buildAndSendP2WPKH({
+      mnemonic, coinType: 2, hrp: 'ltc',
       toAddress, amountFloat: parseFloat(amountLTC),
       fetchUTXOs: async addr => {
         const r = await fetch(`${API}/address/${addr}/utxo`);
