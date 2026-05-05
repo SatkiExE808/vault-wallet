@@ -1,5 +1,24 @@
 const EthereumWallet = (() => {
-  const ETH_RPC = 'https://cloudflare-eth.com';
+  const ETH_RPCS = [
+    'https://eth.llamarpc.com',
+    'https://rpc.ankr.com/eth',
+    'https://ethereum.publicnode.com',
+  ];
+
+  async function rpcCall(method, params) {
+    for (const url of ETH_RPCS) {
+      try {
+        const res = await fetch(url, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+          signal: AbortSignal.timeout(8000),
+        });
+        const j = await res.json();
+        if (j.result !== undefined) return j.result;
+      } catch { /* try next */ }
+    }
+    throw new Error('All ETH RPC endpoints failed');
+  }
 
   const ERC20_ABI = [
     'function balanceOf(address) view returns (uint256)',
@@ -13,24 +32,19 @@ const EthereumWallet = (() => {
   };
 
   function getProvider() {
-    return new ethers.JsonRpcProvider(ETH_RPC);
+    return new ethers.JsonRpcProvider(ETH_RPCS[0]);
   }
 
   async function getETHBalance(address) {
-    try {
-      const provider = getProvider();
-      const bal = await provider.getBalance(address);
-      return parseFloat(ethers.formatEther(bal)).toFixed(6);
-    } catch { return '0.000000'; }
+    const hex = await rpcCall('eth_getBalance', [address, 'latest']);
+    return parseFloat(ethers.formatEther(BigInt(hex))).toFixed(6);
   }
 
   async function getTokenBalance(address, token) {
-    try {
-      const provider = getProvider();
-      const contract = new ethers.Contract(TOKENS[token].address, ERC20_ABI, provider);
-      const bal = await contract.balanceOf(address);
-      return parseFloat(ethers.formatUnits(bal, TOKENS[token].decimals)).toFixed(2);
-    } catch { return '0.00'; }
+    const t = TOKENS[token];
+    const data = '0x70a08231' + address.slice(2).padStart(64, '0');
+    const hex = await rpcCall('eth_call', [{ to: t.address, data }, 'latest']);
+    return parseFloat(ethers.formatUnits(BigInt(hex), t.decimals)).toFixed(2);
   }
 
   async function sendETH(privateKey, toAddress, amount) {

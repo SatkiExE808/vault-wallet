@@ -17,7 +17,7 @@ const EVMChains = (() => {
     BASE:      { rpc: 'https://mainnet.base.org',                      coinType: 60   },
   };
 
-  const ETH_RPC = 'https://cloudflare-eth.com';
+  const ETH_RPC = 'https://eth.llamarpc.com';
 
   // Token registry — rpc key must match a CHAINS key (or 'ETH' for mainnet)
   const TOKEN = {

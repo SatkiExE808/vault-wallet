@@ -877,6 +877,9 @@ function toast(msg, ms = 3000) {
   _toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
 
+// Auto-refresh balances every 60 seconds while wallet is unlocked
+setInterval(() => { if (state.mnemonic) refreshBalances(); }, 60000);
+
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 (async () => {
   const legacy = localStorage.getItem('wallet_mnemonic');
