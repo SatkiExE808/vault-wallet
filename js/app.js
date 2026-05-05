@@ -734,6 +734,18 @@ function updateSendTab() {
         feeRow.dataset.fee   = info.fee;
         feeRow.dataset.feeId = info.feeId;
         feeRow.dataset.token = EVM_GAS[coin.id].token ? '1' : '0';
+
+        // Auto-fill max sendable amount
+        const bal = parseFloat(state.balances[coin.id] || '0');
+        if (bal > 0) {
+          const amtInput = document.getElementById('send-amount');
+          if (EVM_GAS[coin.id].token) {
+            amtInput.value = bal.toString();
+          } else {
+            const max = Math.max(0, bal - parseFloat(info.fee) * 1.2);
+            if (max > 0) amtInput.value = max.toFixed(6);
+          }
+        }
       }).catch(() => { feeDisplay.textContent = 'Unable to estimate'; });
     } else {
       feeRow.style.display = 'none';
