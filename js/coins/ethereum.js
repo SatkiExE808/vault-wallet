@@ -14,26 +14,20 @@ const EthereumWallet = (() => {
           signal: AbortSignal.timeout(8000),
         });
         const j = await res.json();
-        if (j.result !== undefined) return j.result;
-      } catch { /* try next */ }
+        if (j.error) throw new Error(j.error.message || 'RPC error');
+        return j.result;
+      } catch(e) {
+        // Only retry on network/timeout errors, not RPC application errors
+        if (!(e instanceof TypeError) && e.name !== 'AbortError') throw e;
+      }
     }
-    throw new Error('All ETH RPC endpoints failed');
+    throw new Error('Network error: all ETH RPC endpoints failed');
   }
-
-  const ERC20_ABI = [
-    'function balanceOf(address) view returns (uint256)',
-    'function decimals() view returns (uint8)',
-    'function transfer(address to, uint256 amount) returns (bool)'
-  ];
 
   const TOKENS = {
     USDT: { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
-    USDC: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 }
+    USDC: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
   };
-
-  function getProvider() {
-    return new ethers.JsonRpcProvider(ETH_RPCS[0]);
-  }
 
   async function getETHBalance(address) {
     const hex = await rpcCall('eth_getBalance', [address, 'latest']);
@@ -47,34 +41,43 @@ const EthereumWallet = (() => {
     return parseFloat(ethers.formatUnits(BigInt(hex), t.decimals)).toFixed(2);
   }
 
-  async function sendETH(privateKey, toAddress, amount) {
-    const provider = getProvider();
-    const wallet = new ethers.Wallet(privateKey, provider);
-    const tx = await wallet.sendTransaction({
-      to: toAddress,
-      value: ethers.parseEther(amount.toString())
-    });
-    await tx.wait();
-    return tx.hash;
-  }
-
-  async function sendToken(privateKey, toAddress, amount, token) {
-    const provider = getProvider();
-    const wallet = new ethers.Wallet(privateKey, provider);
-    const contract = new ethers.Contract(TOKENS[token].address, ERC20_ABI, wallet);
-    const tx = await contract.transfer(
-      toAddress,
-      ethers.parseUnits(amount.toString(), TOKENS[token].decimals)
-    );
-    await tx.wait();
-    return tx.hash;
-  }
-
   async function estimateFee(isToken = false) {
     const gasPriceHex = await rpcCall('eth_gasPrice', []);
     const gasPrice = BigInt(gasPriceHex);
     const gasLimit = isToken ? 65000n : 21000n;
     return { fee: parseFloat(ethers.formatEther(gasPrice * gasLimit)).toFixed(6), symbol: 'ETH' };
+  }
+
+  async function sendETH(privateKey, toAddress, amount) {
+    const wallet = new ethers.Wallet(privateKey);
+    const [nonceHex, gasPriceHex] = await Promise.all([
+      rpcCall('eth_getTransactionCount', [wallet.address, 'latest']),
+      rpcCall('eth_gasPrice', []),
+    ]);
+    const tx = ethers.Transaction.from({
+      to: toAddress, value: ethers.parseEther(String(amount)),
+      nonce: parseInt(nonceHex, 16), gasPrice: BigInt(gasPriceHex),
+      gasLimit: 21000, chainId: 1,
+    });
+    return rpcCall('eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
+  }
+
+  async function sendToken(privateKey, toAddress, amount, token) {
+    const t = TOKENS[token];
+    const wallet = new ethers.Wallet(privateKey);
+    const data = new ethers.Interface(['function transfer(address,uint256)']).encodeFunctionData(
+      'transfer', [toAddress, ethers.parseUnits(String(amount), t.decimals)]
+    );
+    const [nonceHex, gasPriceHex] = await Promise.all([
+      rpcCall('eth_getTransactionCount', [wallet.address, 'latest']),
+      rpcCall('eth_gasPrice', []),
+    ]);
+    const tx = ethers.Transaction.from({
+      to: t.address, data,
+      nonce: parseInt(nonceHex, 16), gasPrice: BigInt(gasPriceHex),
+      gasLimit: 100000, chainId: 1,
+    });
+    return rpcCall('eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
   }
 
   async function deriveAddress(mnemonic) {
