@@ -1,4 +1,4 @@
-const CACHE = 'vault-v27';
+const CACHE = 'vault-v28';
 const LOCAL_FILES = [
   './index.html',
   './manifest.json',
@@ -39,27 +39,20 @@ self.addEventListener('activate', e => {
   );
 });
 
+// Network-first for everything: always get fresh code when online,
+// fall back to cache when offline. This prevents the wallet from being
+// stuck on an old version after I push a fix.
 self.addEventListener('fetch', e => {
-  const url = new URL(e.request.url);
-
-  // Local files: cache-first
-  if (url.origin === self.location.origin) {
-    e.respondWith(
-      caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
-        return res;
-      }))
-    );
-    return;
-  }
-
-  // CDN / external: network-first, fall back to cache
   e.respondWith(
-    fetch(e.request).then(res => {
-      const clone = res.clone();
-      caches.open(CACHE).then(c => c.put(e.request, clone));
-      return res;
-    }).catch(() => caches.match(e.request))
+    fetch(e.request)
+      .then(res => {
+        // Only cache successful same-origin responses + cross-origin OK responses
+        if (res && res.status === 200 && res.type !== 'opaqueredirect') {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone)).catch(() => {});
+        }
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });
