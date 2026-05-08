@@ -19,7 +19,7 @@
   }
   window.showView = showView;
 
-  // ── Home asset list ───────────────────────────────────────
+  // ── Home asset list (grouped by network) ──────────────────
   function renderAssetList() {
     const list = $('asset-list');
     if (!list) return;
@@ -28,26 +28,36 @@
       list.innerHTML = `<p style="text-align:center;color:var(--text2);padding:24px">No assets enabled. Tap Manage to add some.</p>`;
       return;
     }
-    list.innerHTML = active.map(coin => {
-      const bal = state.balances[coin.id] ?? '…';
-      const usd = formatUSD(bal, state.prices[coin.id]) || '';
-      const badge = coin.networkLabel
-        ? `<span class="network-badge ${coin.networkClass}">${coin.networkLabel}</span>` : '';
-      return `
-        <div class="asset-item" data-coin="${coin.id}">
-          <div class="asset-icon">
-            <img src="${coin.icon}" alt="" onerror="this.style.display='none'">
-          </div>
-          <div class="asset-meta">
-            <div class="asset-name">${coin.name} ${badge}</div>
-            <div class="asset-symbol">${coin.symbol}</div>
-          </div>
-          <div class="asset-right">
-            <div class="asset-bal">${bal}</div>
-            <div class="asset-usd">${usd}</div>
-          </div>
-        </div>`;
-    }).join('');
+    const cats = [...new Set(active.map(c => c.category))];
+    let html = '';
+    for (const cat of cats) {
+      const group = active.filter(c => c.category === cat);
+      html += `<div class="network-group">`;
+      html += `<div class="network-header">${cat}</div>`;
+      html += `<div class="network-card">`;
+      html += group.map(coin => {
+        const bal = state.balances[coin.id] ?? '…';
+        const usd = formatUSD(bal, state.prices[coin.id]) || '';
+        const badge = coin.networkLabel
+          ? `<span class="network-badge ${coin.networkClass}">${coin.networkLabel}</span>` : '';
+        return `
+          <div class="asset-item" data-coin="${coin.id}">
+            <div class="asset-icon">
+              <img src="${coin.icon}" alt="" onerror="this.style.display='none'">
+            </div>
+            <div class="asset-meta">
+              <div class="asset-name">${coin.name} ${badge}</div>
+              <div class="asset-symbol">${coin.symbol}</div>
+            </div>
+            <div class="asset-right">
+              <div class="asset-bal">${bal}</div>
+              <div class="asset-usd">${usd}</div>
+            </div>
+          </div>`;
+      }).join('');
+      html += `</div></div>`;
+    }
+    list.innerHTML = html;
     list.querySelectorAll('.asset-item').forEach(el => {
       el.onclick = () => {
         selectCoin(el.dataset.coin);
@@ -75,7 +85,7 @@
       : '$—';
   }
 
-  // Render the wallet-view list (same data, different container)
+  // Render the wallet-view: each network in its own box, each coin shows QR + address inline
   function renderWalletList() {
     const list = $('wallet-asset-list');
     if (!list) return;
@@ -84,30 +94,75 @@
       list.innerHTML = `<p style="text-align:center;color:var(--text2);padding:24px">No wallets enabled. Tap Settings → Manage Assets.</p>`;
       return;
     }
-    list.innerHTML = active.map(coin => {
-      const bal = state.balances[coin.id] ?? '…';
-      const usd = formatUSD(bal, state.prices[coin.id]) || '';
-      const badge = coin.networkLabel
-        ? `<span class="network-badge ${coin.networkClass}">${coin.networkLabel}</span>` : '';
-      return `
-        <div class="asset-item" data-coin="${coin.id}">
-          <div class="asset-icon">
-            <img src="${coin.icon}" alt="" onerror="this.style.display='none'">
-          </div>
-          <div class="asset-meta">
-            <div class="asset-name">${coin.name} ${badge}</div>
-            <div class="asset-symbol">${coin.symbol}</div>
-          </div>
-          <div class="asset-right">
-            <div class="asset-bal">${bal}</div>
-            <div class="asset-usd">${usd}</div>
-          </div>
-        </div>`;
-    }).join('');
-    list.querySelectorAll('.asset-item').forEach(el => {
-      el.onclick = () => {
-        selectCoin(el.dataset.coin);
+    const cats = [...new Set(active.map(c => c.category))];
+    let html = '';
+    for (const cat of cats) {
+      const group = active.filter(c => c.category === cat);
+      html += `<div class="network-group">`;
+      html += `<div class="network-header">${cat}</div>`;
+      for (const coin of group) {
+        const bal = state.balances[coin.id] ?? '…';
+        const usd = formatUSD(bal, state.prices[coin.id]) || '';
+        const addr = state.addresses[coin.id] || '';
+        const addrShort = addr ? `${addr.slice(0, 12)}…${addr.slice(-8)}` : '—';
+        const badge = coin.networkLabel
+          ? `<span class="network-badge ${coin.networkClass}">${coin.networkLabel}</span>` : '';
+        html += `
+          <div class="wallet-card" data-coin="${coin.id}" data-addr="${addr}">
+            <div class="wallet-card-head">
+              <div class="asset-icon"><img src="${coin.icon}" alt="" onerror="this.style.display='none'"></div>
+              <div class="wallet-card-meta">
+                <div class="asset-name">${coin.name} ${badge}</div>
+                <div class="asset-symbol">${coin.symbol}</div>
+              </div>
+              <div class="asset-right">
+                <div class="asset-bal">${bal}</div>
+                <div class="asset-usd">${usd}</div>
+              </div>
+            </div>
+            <div class="wallet-card-body">
+              <div class="wallet-qr" id="wqr-${coin.id}"></div>
+              <div class="wallet-card-addr">
+                <code>${addrShort}</code>
+                <button class="btn btn-outline btn-sm wallet-copy-btn" data-addr="${addr}">Copy</button>
+              </div>
+              <button class="btn btn-primary wallet-send-btn" data-coin="${coin.id}">↑ Send</button>
+            </div>
+          </div>`;
+      }
+      html += `</div>`;
+    }
+    list.innerHTML = html;
+
+    // Render QR codes for each coin
+    if (typeof QRCode !== 'undefined') {
+      for (const coin of active) {
+        const addr = state.addresses[coin.id];
+        const slot = $(`wqr-${coin.id}`);
+        if (slot && addr) {
+          slot.innerHTML = '';
+          new QRCode(slot, {
+            text: addr, width: 110, height: 110,
+            colorDark: '#000', colorLight: '#fff',
+            correctLevel: QRCode.CorrectLevel.M,
+          });
+        }
+      }
+    }
+
+    // Wire copy + send buttons
+    list.querySelectorAll('.wallet-copy-btn').forEach(btn => {
+      btn.onclick = e => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(btn.dataset.addr).then(() => toast('Address copied'));
+      };
+    });
+    list.querySelectorAll('.wallet-send-btn').forEach(btn => {
+      btn.onclick = e => {
+        e.stopPropagation();
+        selectCoin(btn.dataset.coin);
         showView('coin');
+        document.querySelector('.tab[data-tab="send"]')?.click();
       };
     });
   }
