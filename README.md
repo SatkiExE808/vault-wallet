@@ -2,6 +2,17 @@
 
 A browser-based HD wallet that runs entirely on your device. No server, no account, no third party. Your keys never leave your browser.
 
+## Screenshots
+
+| Setup | Home | Coin Detail |
+|---|---|---|
+| ![Setup](screenshots/01-setup.png) | ![Home](screenshots/02-home.png) | ![Coin Detail](screenshots/03-coin-detail.png) |
+
+**Live demo (no login):**
+- Home: https://satkiexe808.github.io/vault-wallet/demo.html
+- Coin detail: https://satkiexe808.github.io/vault-wallet/demo-coin.html
+
+
 ## Supported Assets
 
 | Chain | Native | Tokens |

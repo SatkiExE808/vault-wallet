@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Vault — Demo</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Demo: shows the home + coin views with fake data, no auth required.
+       This page is for screenshots / preview only. -->
+
+  <div id="app" style="display:flex">
+    <!-- HOME VIEW -->
+    <div class="view active" id="home-view">
+      <div class="topbar">
+        <div class="topbar-title">
+          <svg viewBox="0 0 28 28" fill="none">
+            <circle cx="14" cy="14" r="14" fill="#f97316"/>
+            <path d="M9 14l3.5 3.5L19 10" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <h1>Vault</h1>
+        </div>
+        <button class="icon-btn">↻</button>
+      </div>
+
+      <div class="balance-hero">
+        <div class="label">Total Balance</div>
+        <div class="total">$12,847.32</div>
+        <div class="change">+2.4% today</div>
+      </div>
+
+      <div class="qa-row">
+        <button class="qa-btn"><span class="qa-icon">↑</span><span class="qa-label">Send</span></button>
+        <button class="qa-btn"><span class="qa-icon">↓</span><span class="qa-label">Receive</span></button>
+        <button class="qa-btn"><span class="qa-icon">⊞</span><span class="qa-label">Manage</span></button>
+      </div>
+
+      <div class="section-h"><h2>Assets</h2></div>
+      <div class="asset-list">
+        <div class="asset-item">
+          <div class="asset-icon" style="background:#f7931a;color:#fff;font-weight:700">₿</div>
+          <div class="asset-meta">
+            <div class="asset-name">Bitcoin</div>
+            <div class="asset-symbol">BTC</div>
+          </div>
+          <div class="asset-right">
+            <div class="asset-bal">0.142</div>
+            <div class="asset-usd">$8,420.50</div>
+          </div>
+        </div>
+        <div class="asset-item">
+          <div class="asset-icon" style="background:#627eea;color:#fff;font-weight:700">Ξ</div>
+          <div class="asset-meta">
+            <div class="asset-name">Ethereum</div>
+            <div class="asset-symbol">ETH</div>
+          </div>
+          <div class="asset-right">
+            <div class="asset-bal">0.85</div>
+            <div class="asset-usd">$2,140.00</div>
+          </div>
+        </div>
+        <div class="asset-item">
+          <div class="asset-icon" style="background:#26a17b;color:#fff;font-weight:700">₮</div>
+          <div class="asset-meta">
+            <div class="asset-name">Tether <span class="network-badge network-trc20">TRC20</span></div>
+            <div class="asset-symbol">USDT</div>
+          </div>
+          <div class="asset-right">
+            <div class="asset-bal">1500.00</div>
+            <div class="asset-usd">$1,500.00</div>
+          </div>
+        </div>
+        <div class="asset-item">
+          <div class="asset-icon" style="background:#ff6600;color:#fff;font-weight:700">ɱ</div>
+          <div class="asset-meta">
+            <div class="asset-name">Monero</div>
+            <div class="asset-symbol">XMR</div>
+          </div>
+          <div class="asset-right">
+            <div class="asset-bal">5.2</div>
+            <div class="asset-usd">$786.82</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <nav id="bottom-nav">
+      <button class="nav-item active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span>Home</span>
+      </button>
+      <button class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
+        <span>Wallet</span>
+      </button>
+      <button class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span>Activity</span>
+      </button>
+      <button class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Settings</span>
+      </button>
+    </nav>
+  </div>
+</body>
+</html>
