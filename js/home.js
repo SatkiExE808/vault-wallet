@@ -85,7 +85,63 @@
       : '$—';
   }
 
-  // Render the wallet-view: each network in its own box, each coin shows QR + address inline
+  // Wallet view: which coin is currently displayed at top
+  let walletDisplayCoin = null;
+
+  function renderWalletDisplay(coinId) {
+    const active = (typeof getActiveCoins === 'function') ? getActiveCoins() : [];
+    if (!active.length) return;
+    walletDisplayCoin = coinId || walletDisplayCoin || active[0].id;
+    const coin = active.find(c => c.id === walletDisplayCoin);
+    if (!coin) { walletDisplayCoin = active[0].id; return renderWalletDisplay(walletDisplayCoin); }
+
+    const bal  = state.balances[coin.id] ?? '…';
+    const usd  = formatUSD(bal, state.prices[coin.id]) || '';
+    const addr = state.addresses[coin.id] || '—';
+
+    $('wd-icon').innerHTML = `<img src="${coin.icon}" alt="" style="width:18px;height:18px;border-radius:50%" onerror="this.style.display='none'">`;
+    $('wd-symbol').textContent = coin.symbol;
+    const badge = $('wd-badge');
+    if (coin.networkLabel) {
+      badge.textContent = coin.networkLabel;
+      badge.className = 'network-badge ' + coin.networkClass;
+      badge.style.display = '';
+    } else { badge.style.display = 'none'; }
+    $('wd-amount').textContent = `${bal} ${coin.symbol}`;
+    $('wd-usd').textContent = usd;
+    $('wd-address').textContent = addr;
+
+    // Render QR
+    const qrSlot = $('wd-qr');
+    qrSlot.innerHTML = '';
+    if (typeof QRCode !== 'undefined' && addr && addr !== '—') {
+      new QRCode(qrSlot, {
+        text: addr, width: 140, height: 140,
+        colorDark: '#000', colorLight: '#fff',
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+    }
+
+    // Wire actions
+    $('wd-copy').onclick = () => navigator.clipboard.writeText(addr).then(() => toast('Address copied'));
+    $('wd-send').onclick = () => {
+      selectCoin(coin.id);
+      showView('coin');
+      document.querySelector('.tab[data-tab="send"]')?.click();
+    };
+    $('wd-history').onclick = () => {
+      selectCoin(coin.id);
+      showView('coin');
+      document.querySelector('.tab[data-tab="history"]')?.click();
+    };
+
+    // Highlight selected coin in the picker list
+    document.querySelectorAll('#wallet-asset-list .asset-item').forEach(el => {
+      el.classList.toggle('selected', el.dataset.coin === coin.id);
+    });
+  }
+
+  // Bottom picker list (grouped by network)
   function renderWalletList() {
     const list = $('wallet-asset-list');
     if (!list) return;
@@ -100,71 +156,38 @@
       const group = active.filter(c => c.category === cat);
       html += `<div class="network-group">`;
       html += `<div class="network-header">${cat}</div>`;
-      for (const coin of group) {
+      html += `<div class="network-card">`;
+      html += group.map(coin => {
         const bal = state.balances[coin.id] ?? '…';
         const usd = formatUSD(bal, state.prices[coin.id]) || '';
-        const addr = state.addresses[coin.id] || '';
-        const addrShort = addr ? `${addr.slice(0, 12)}…${addr.slice(-8)}` : '—';
         const badge = coin.networkLabel
           ? `<span class="network-badge ${coin.networkClass}">${coin.networkLabel}</span>` : '';
-        html += `
-          <div class="wallet-card" data-coin="${coin.id}" data-addr="${addr}">
-            <div class="wallet-card-head">
-              <div class="asset-icon"><img src="${coin.icon}" alt="" onerror="this.style.display='none'"></div>
-              <div class="wallet-card-meta">
-                <div class="asset-name">${coin.name} ${badge}</div>
-                <div class="asset-symbol">${coin.symbol}</div>
-              </div>
-              <div class="asset-right">
-                <div class="asset-bal">${bal}</div>
-                <div class="asset-usd">${usd}</div>
-              </div>
+        return `
+          <div class="asset-item" data-coin="${coin.id}">
+            <div class="asset-icon">
+              <img src="${coin.icon}" alt="" onerror="this.style.display='none'">
             </div>
-            <div class="wallet-card-body">
-              <div class="wallet-qr" id="wqr-${coin.id}"></div>
-              <div class="wallet-card-addr">
-                <code>${addrShort}</code>
-                <button class="btn btn-outline btn-sm wallet-copy-btn" data-addr="${addr}">Copy</button>
-              </div>
-              <button class="btn btn-primary wallet-send-btn" data-coin="${coin.id}">↑ Send</button>
+            <div class="asset-meta">
+              <div class="asset-name">${coin.name} ${badge}</div>
+              <div class="asset-symbol">${coin.symbol}</div>
+            </div>
+            <div class="asset-right">
+              <div class="asset-bal">${bal}</div>
+              <div class="asset-usd">${usd}</div>
             </div>
           </div>`;
-      }
-      html += `</div>`;
+      }).join('');
+      html += `</div></div>`;
     }
     list.innerHTML = html;
 
-    // Render QR codes for each coin
-    if (typeof QRCode !== 'undefined') {
-      for (const coin of active) {
-        const addr = state.addresses[coin.id];
-        const slot = $(`wqr-${coin.id}`);
-        if (slot && addr) {
-          slot.innerHTML = '';
-          new QRCode(slot, {
-            text: addr, width: 110, height: 110,
-            colorDark: '#000', colorLight: '#fff',
-            correctLevel: QRCode.CorrectLevel.M,
-          });
-        }
-      }
-    }
+    // Tapping a coin updates the QR display at the top (no navigation)
+    list.querySelectorAll('.asset-item').forEach(el => {
+      el.onclick = () => renderWalletDisplay(el.dataset.coin);
+    });
 
-    // Wire copy + send buttons
-    list.querySelectorAll('.wallet-copy-btn').forEach(btn => {
-      btn.onclick = e => {
-        e.stopPropagation();
-        navigator.clipboard.writeText(btn.dataset.addr).then(() => toast('Address copied'));
-      };
-    });
-    list.querySelectorAll('.wallet-send-btn').forEach(btn => {
-      btn.onclick = e => {
-        e.stopPropagation();
-        selectCoin(btn.dataset.coin);
-        showView('coin');
-        document.querySelector('.tab[data-tab="send"]')?.click();
-      };
-    });
+    // Initialise top display
+    renderWalletDisplay(walletDisplayCoin);
   }
 
   function updateHome() {

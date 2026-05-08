@@ -67,14 +67,37 @@
       <div style="height:24px"></div>
     </div>
 
-    <!-- ── WALLET VIEW (coin picker) ───────────────────────── -->
+    <!-- ── WALLET VIEW: selected coin QR on top, picker below ─ -->
     <div class="view" id="wallet-view">
       <div class="topbar">
         <div class="topbar-title"><h1>My Wallets</h1></div>
         <button class="icon-btn" id="wallet-refresh" aria-label="Refresh">↻</button>
       </div>
-      <div class="section-h"><h2>Choose a wallet</h2></div>
-      <div class="asset-list" id="wallet-asset-list"></div>
+
+      <!-- Top: selected coin display -->
+      <div id="wallet-display" class="card balance-card" style="margin:0 12px 14px">
+        <div class="coin-badge">
+          <span id="wd-icon" class="asset-icon" style="width:18px;height:18px"></span>
+          <span id="wd-symbol">—</span>
+          <span class="network-badge" id="wd-badge" style="display:none"></span>
+        </div>
+        <div class="amount" id="wd-amount">—</div>
+        <div id="wd-usd" style="font-size:14px;color:var(--text2);margin-top:2px;min-height:18px"></div>
+
+        <div class="qr-container"><div id="wd-qr"></div></div>
+        <div class="address-box">
+          <code id="wd-address">—</code>
+          <button class="btn btn-outline btn-sm" id="wd-copy">Copy</button>
+        </div>
+
+        <div class="balance-actions">
+          <button class="btn btn-primary" id="wd-send">↑ Send</button>
+          <button class="btn btn-outline" id="wd-history">⊟ History</button>
+        </div>
+      </div>
+
+      <div class="section-h" style="padding-top:8px"><h2>Choose another wallet</h2></div>
+      <div id="wallet-asset-list"></div>
       <div style="height:24px"></div>
     </div>
 
@@ -107,6 +130,11 @@
           </button>
         </div>
         <div class="card" style="padding:0">
+          <button class="settings-menu-item" id="menu-check-update">
+            <span class="menu-icon">⟳</span>
+            <span class="menu-label">Check for Updates</span>
+            <span class="menu-arrow">›</span>
+          </button>
           <button class="settings-menu-item" id="menu-lock-wallet">
             <span class="menu-icon">🔓</span>
             <span class="menu-label">Lock Wallet</span>

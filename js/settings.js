@@ -247,10 +247,43 @@
   }
   window.renderSettingsTab = renderSettingsTab;
 
+  // ── Check for updates ──────────────────────────────────────
+  async function checkForUpdates() {
+    toast('Checking for updates…');
+    try {
+      // Force-fetch the SW file with cache-bust to trigger a new install
+      const r = await fetch('./sw.js?cb=' + Date.now(), { cache: 'no-store' });
+      const text = await r.text();
+      const match = text.match(/CACHE\s*=\s*['"]([^'"]+)['"]/);
+      const remoteVer = match ? match[1] : '?';
+      const localVer  = (await caches.keys()).find(k => k.startsWith('vault-')) || '?';
+
+      // Tell the SW to update
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) await reg.update();
+      }
+
+      if (remoteVer !== localVer) {
+        if (confirm(`Update available: ${localVer} → ${remoteVer}\n\nReload now?`)) {
+          // Clear all caches so the new version is fetched fresh
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
+          location.reload();
+        }
+      } else {
+        toast(`You're up to date (${localVer})`);
+      }
+    } catch (e) {
+      toast('Update check failed: ' + (e.message || e.name));
+    }
+  }
+
   function wire() {
     $('menu-show-seed')?.addEventListener('click', showSeed);
     $('menu-change-pwd')?.addEventListener('click', changePassword);
     $('menu-manage-assets')?.addEventListener('click', showManageAssets);
+    $('menu-check-update')?.addEventListener('click', checkForUpdates);
     $('menu-lock-wallet')?.addEventListener('click', () => $('lock-btn')?.click());
     $('menu-biometric')?.addEventListener('click', () => {
       if (window.biometricEnabled?.()) disableBiometric();

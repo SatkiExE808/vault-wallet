@@ -200,6 +200,11 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .network-card .asset-item:last-child { border-bottom: none; }
+.network-card .asset-item.selected {
+  background: var(--accent-glow);
+  border-left: 3px solid var(--accent);
+  padding-left: 7px;
+}
 
 /* ── Wallet view: card with QR per coin ─────────────────────── */
 .wallet-card {
