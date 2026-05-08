@@ -254,18 +254,16 @@
     }
     list.innerHTML = html;
 
-    // Tapping a coin updates the QR display at top + brings its category to the top of the picker
+    // Tapping a coin updates the QR display at top
     list.querySelectorAll('.asset-item').forEach(el => {
       el.onclick = () => {
-        const coinId = el.dataset.coin;
-        const active = (typeof getActiveCoins === 'function') ? getActiveCoins() : [];
-        const coin = active.find(c => c.id === coinId);
-        renderWalletDisplay(coinId);
-        if (coin) bringCategoryToTop(coin.category);  // re-renders both lists
-        // Scroll to top — covers both browser PWA and Capacitor WebView
+        renderWalletDisplay(el.dataset.coin);
+        // Scroll the QR back into view so it's immediately visible
+        const target = $('wallet-display');
+        if (target?.scrollIntoView) {
+          requestAnimationFrame(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+        }
         try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { window.scrollTo(0, 0); }
-        try { document.documentElement.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
-        if (document.body) document.body.scrollTop = 0;
       };
     });
 
