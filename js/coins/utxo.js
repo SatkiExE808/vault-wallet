@@ -133,6 +133,21 @@ const UTXOCrypto = (() => {
   function p2pkhScript(h) { return new Uint8Array([0x76, 0xa9, 0x14, ...h, 0x88, 0xac]); }
   function p2shScript(h)  { return new Uint8Array([0xa9, 0x14, ...h, 0x87]); }
 
+  // Parse a decimal amount string into integer satoshis without losing precision.
+  // Accepts "0.123", "1.23456789", "100", etc. Rejects more than 8 decimals
+  // (any UTXO chain we support uses 1e-8 base units).
+  function amountToSat(input) {
+    const s = String(input).trim();
+    if (!/^[0-9]+(\.[0-9]+)?$/.test(s)) throw new Error('Invalid amount');
+    const [intPart, fracRaw = ''] = s.split('.');
+    if (fracRaw.length > 8) throw new Error('Amount has more than 8 decimal places');
+    const frac = fracRaw.padEnd(8, '0');
+    const sat = BigInt(intPart) * 100000000n + BigInt(frac);
+    if (sat <= 0n) throw new Error('Amount must be > 0');
+    if (sat > Number.MAX_SAFE_INTEGER) throw new Error('Amount exceeds safe range');
+    return Number(sat);
+  }
+
   const N_SECP = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141n;
   function derEncode(rHex, sHex) {
     let r = BigInt('0x' + rHex), s = BigInt('0x' + sHex);
@@ -172,14 +187,26 @@ const UTXOCrypto = (() => {
   }
   function _b32Hrp(h) { const r = []; for (const c of h) r.push(c.charCodeAt(0) >> 5); r.push(0); for (const c of h) r.push(c.charCodeAt(0) & 31); return r; }
   function bech32Decode(str) {
+    if (str.length < 8 || str.length > 90) throw new Error('Bad bech32 length');
     const s = str.toLowerCase(), sep = s.lastIndexOf('1');
+    if (sep < 1 || sep + 7 > s.length) throw new Error('Bad bech32 separator');
     const hrp = s.slice(0, sep), data = Array.from(s.slice(sep + 1), c => _BC32.indexOf(c));
     if (data.includes(-1)) throw new Error('Invalid bech32 char');
     const poly = _b32Poly([..._b32Hrp(hrp), ...data]);
-    if (poly !== 1 && poly !== 0x2bc830a3) throw new Error('Bad bech32 checksum');
-    const ver = data[0], prog5 = data.slice(1, -6);
+    const ver = data[0];
+    // BIP350: v0 uses bech32 (poly==1); v1+ (Taproot) uses bech32m (poly==0x2bc830a3).
+    if (ver === 0 && poly !== 1)            throw new Error('Bad bech32 checksum (v0 requires bech32)');
+    if (ver >= 1 && poly !== 0x2bc830a3)    throw new Error('Bad bech32 checksum (v1+ requires bech32m)');
+    if (ver < 0 || ver > 16)                throw new Error('Bad witness version');
+    const prog5 = data.slice(1, -6);
     let acc = 0, bits = 0; const prog = [];
-    for (const v of prog5) { acc = (acc << 5) | v; bits += 5; while (bits >= 8) { bits -= 8; prog.push((acc >> bits) & 0xff); } }
+    for (const v of prog5) {
+      acc = (acc << 5) | v; bits += 5;
+      while (bits >= 8) { bits -= 8; prog.push((acc >> bits) & 0xff); }
+    }
+    if (bits >= 5 || ((acc << (8 - bits)) & 0xff)) throw new Error('Bad bech32 padding');
+    if (prog.length < 2 || prog.length > 40)        throw new Error('Bad witness program length');
+    if (ver === 0 && prog.length !== 20 && prog.length !== 32) throw new Error('Bad v0 program length');
     return { witnessVersion: ver, program: new Uint8Array(prog) };
   }
 
@@ -198,7 +225,9 @@ const UTXOCrypto = (() => {
   function bech32Encode(hrp, witnessVersion, program) {
     const data = [witnessVersion, ...convertBits(program, 8, 5)];
     const values = [..._b32Hrp(hrp), ...data, 0, 0, 0, 0, 0, 0];
-    const poly = _b32Poly(values) ^ 1; // bech32 (not bech32m)
+    // BIP350: v0 → bech32 (XOR 1); v1+ → bech32m (XOR 0x2bc830a3)
+    const xorConst = witnessVersion === 0 ? 1 : 0x2bc830a3;
+    const poly = _b32Poly(values) ^ xorConst;
     const checksum = Array.from({length: 6}, (_, i) => (poly >> (5 * (5 - i))) & 31);
     return hrp + '1' + [...data, ...checksum].map(d => _BC32[d]).join('');
   }
@@ -224,11 +253,11 @@ const UTXOCrypto = (() => {
   }
 
   // Complete UTXO transaction builder + signer
-  // params: { mnemonic, coinType, versionByte, bech32Prefix, toAddress, amountFloat,
+  // params: { mnemonic, coinType, versionByte, bech32Prefix, toAddress, amount (decimal string),
   //           fetchUTXOs(addr)->Promise<[{txid,vout,value}]>,
   //           getFeeRate()->Promise<number>,
   //           broadcastTx(hexStr)->Promise<txid> }
-  async function buildAndSendTx({ mnemonic, coinType, versionByte, bech32Prefix, toAddress, amountFloat, fetchUTXOs, getFeeRate, broadcastTx }) {
+  async function buildAndSendTx({ mnemonic, coinType, versionByte, bech32Prefix, toAddress, amount, fetchUTXOs, getFeeRate, broadcastTx }) {
     const seed = await bip39ToSeed(mnemonic);
     const child = ethers.HDNodeWallet.fromSeed(seed).derivePath(`m/44'/${coinType}'/0'/0/0`);
     const signingKey = new ethers.SigningKey(child.privateKey);
@@ -240,16 +269,19 @@ const UTXOCrypto = (() => {
     const utxos = await fetchUTXOs(fromAddress);
     if (!utxos.length) throw new Error('No spendable UTXOs — address has no confirmed balance');
 
-    const amountSat = Math.round(amountFloat * 1e8);
+    const amountSat = amountToSat(amount);
     const feeRate = await getFeeRate();
+    const txOverhead = 10, perInput = 148, perOutput = 34;
 
     const sorted = [...utxos].sort((a, b) => b.value - a.value);
     const selected = []; let inputsSat = 0;
     for (const u of sorted) {
       selected.push(u); inputsSat += u.value;
-      if (inputsSat >= amountSat + feeRate * (148 * selected.length + 34 * 2 + 10)) break;
+      // Use selected.length+1 in fee estimate so we don't break out before fees are actually covered
+      const projectedFee = feeRate * (perInput * (selected.length + 1) + perOutput * 2 + txOverhead);
+      if (inputsSat >= amountSat + projectedFee) break;
     }
-    const fee = feeRate * (148 * selected.length + 34 * 2 + 10);
+    const fee = feeRate * (perInput * selected.length + perOutput * 2 + txOverhead);
     if (inputsSat < amountSat + fee)
       throw new Error(`Insufficient balance. Need ${((amountSat + fee) / 1e8).toFixed(8)} (incl. fee ~${(fee / 1e8).toFixed(8)})`);
     const changeSat = inputsSat - amountSat - fee;
@@ -274,7 +306,7 @@ const UTXOCrypto = (() => {
   }
 
   // BIP143 Native SegWit (P2WPKH) transaction builder for bc1q / ltc1q addresses
-  async function buildAndSendP2WPKH({ mnemonic, coinType, hrp, toAddress, amountFloat, fetchUTXOs, getFeeRate, broadcastTx }) {
+  async function buildAndSendP2WPKH({ mnemonic, coinType, hrp, toAddress, amount, fetchUTXOs, getFeeRate, broadcastTx }) {
     const seed = await bip39ToSeed(mnemonic);
     const child = ethers.HDNodeWallet.fromSeed(seed).derivePath(`m/84'/${coinType}'/0'/0/0`);
     const signingKey = new ethers.SigningKey(child.privateKey);
@@ -286,7 +318,7 @@ const UTXOCrypto = (() => {
     const utxos = await fetchUTXOs(fromAddress);
     if (!utxos.length) throw new Error('No spendable UTXOs — address has no confirmed balance');
 
-    const amountSat = Math.round(amountFloat * 1e8);
+    const amountSat = amountToSat(amount);
     const feeRate = await getFeeRate();
 
     // P2WPKH vbytes: 10.5 overhead + 68 per input + 31 per output
@@ -294,7 +326,8 @@ const UTXOCrypto = (() => {
     const selected = []; let inputsSat = 0;
     for (const u of sorted) {
       selected.push(u); inputsSat += u.value;
-      if (inputsSat >= amountSat + feeRate * Math.ceil(10.5 + 68 * selected.length + 31 * 2)) break;
+      const projectedFee = Math.ceil(feeRate * (10.5 + 68 * (selected.length + 1) + 31 * 2));
+      if (inputsSat >= amountSat + projectedFee) break;
     }
     const fee = Math.ceil(feeRate * (10.5 + 68 * selected.length + 31 * 2));
     if (inputsSat < amountSat + fee)

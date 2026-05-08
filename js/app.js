@@ -42,6 +42,8 @@ const COINS = [
     balance: addr => BitcoinWallet.getBalance(addr),
     canSend: true, defaultEnabled: true,
     send: async (m, to, amt) => BitcoinWallet.sendBTC(m, to, amt),
+    history: addr => BitcoinWallet.getHistory(addr),
+    explorerAddr: addr => `https://mempool.space/address/${addr}`,
   },
 
   // ── Ethereum ──
@@ -52,6 +54,8 @@ const COINS = [
     balance: addr => EthereumWallet.getETHBalance(addr),
     canSend: true, defaultEnabled: true,
     send: async (m, to, amt) => EthereumWallet.sendETH(await EthereumWallet.derivePrivateKey(m), to, amt),
+    history: addr => fetchEvmHistory(addr, 'ETH'),
+    explorerAddr: addr => `https://etherscan.io/address/${addr}`,
   },
   {
     id: 'USDT_ERC20', name: 'Tether USD', symbol: 'USDT', category: 'Ethereum',
@@ -60,6 +64,8 @@ const COINS = [
     balance: addr => EthereumWallet.getTokenBalance(addr, 'USDT'),
     canSend: true, defaultEnabled: true,
     send: async (m, to, amt) => EthereumWallet.sendToken(await EthereumWallet.derivePrivateKey(m), to, amt, 'USDT'),
+    history: addr => fetchEvmHistory(addr, 'ETH', '0xdAC17F958D2ee523a2206206994597C13D831ec7', 6),
+    explorerAddr: addr => `https://etherscan.io/address/${addr}`,
   },
   {
     id: 'USDC_ERC20', name: 'USD Coin', symbol: 'USDC', category: 'Ethereum',
@@ -68,6 +74,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'USDC_ERC20'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'USDC_ERC20', to, amt),
+    history: addr => fetchEvmHistory(addr, 'ETH', '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 6),
+    explorerAddr: addr => `https://etherscan.io/address/${addr}`,
   },
   {
     id: 'DAI', name: 'Dai', symbol: 'DAI', category: 'Ethereum',
@@ -76,6 +84,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'DAI'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'DAI', to, amt),
+    history: addr => fetchEvmHistory(addr, 'ETH', '0x6B175474E89094C44Da98b954EedeAC495271d0F', 18),
+    explorerAddr: addr => `https://etherscan.io/address/${addr}`,
   },
 
   // ── BNB Chain ──
@@ -86,6 +96,8 @@ const COINS = [
     balance: addr => EVMChains.getNative(addr, 'BSC'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendNative(m, 'BSC', to, amt),
+    history: addr => fetchEvmHistory(addr, 'BSC'),
+    explorerAddr: addr => `https://bscscan.com/address/${addr}`,
   },
   {
     id: 'USDT_BEP20', name: 'Tether USD', symbol: 'USDT', category: 'BNB Chain',
@@ -94,6 +106,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'USDT_BEP20'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'USDT_BEP20', to, amt),
+    history: addr => fetchEvmHistory(addr, 'BSC', '0x55d398326f99059fF775485246999027B3197955', 18),
+    explorerAddr: addr => `https://bscscan.com/address/${addr}`,
   },
   {
     id: 'USDC_BEP20', name: 'USD Coin', symbol: 'USDC', category: 'BNB Chain',
@@ -102,6 +116,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'USDC_BEP20'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'USDC_BEP20', to, amt),
+    history: addr => fetchEvmHistory(addr, 'BSC', '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', 18),
+    explorerAddr: addr => `https://bscscan.com/address/${addr}`,
   },
 
   // ── Polygon ──
@@ -112,6 +128,8 @@ const COINS = [
     balance: addr => EVMChains.getNative(addr, 'POLYGON'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendNative(m, 'POLYGON', to, amt),
+    history: addr => fetchEvmHistory(addr, 'POLYGON'),
+    explorerAddr: addr => `https://polygonscan.com/address/${addr}`,
   },
   {
     id: 'USDT_POLY', name: 'Tether USD', symbol: 'USDT', category: 'Polygon',
@@ -120,6 +138,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'USDT_POLY'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'USDT_POLY', to, amt),
+    history: addr => fetchEvmHistory(addr, 'POLYGON', '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', 6),
+    explorerAddr: addr => `https://polygonscan.com/address/${addr}`,
   },
   {
     id: 'USDC_POLY', name: 'USD Coin', symbol: 'USDC', category: 'Polygon',
@@ -128,6 +148,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'USDC_POLY'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'USDC_POLY', to, amt),
+    history: addr => fetchEvmHistory(addr, 'POLYGON', '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', 6),
+    explorerAddr: addr => `https://polygonscan.com/address/${addr}`,
   },
 
   // ── Avalanche ──
@@ -138,6 +160,8 @@ const COINS = [
     balance: addr => EVMChains.getNative(addr, 'AVALANCHE'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendNative(m, 'AVALANCHE', to, amt),
+    history: addr => fetchEvmHistory(addr, 'AVALANCHE'),
+    explorerAddr: addr => `https://snowtrace.io/address/${addr}`,
   },
   {
     id: 'USDT_AVAX', name: 'Tether USD', symbol: 'USDT', category: 'Avalanche',
@@ -146,6 +170,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'USDT_AVAX'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'USDT_AVAX', to, amt),
+    history: addr => fetchEvmHistory(addr, 'AVALANCHE', '0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7', 6),
+    explorerAddr: addr => `https://snowtrace.io/address/${addr}`,
   },
   {
     id: 'USDC_AVAX', name: 'USD Coin', symbol: 'USDC', category: 'Avalanche',
@@ -154,6 +180,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'USDC_AVAX'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'USDC_AVAX', to, amt),
+    history: addr => fetchEvmHistory(addr, 'AVALANCHE', '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E', 6),
+    explorerAddr: addr => `https://snowtrace.io/address/${addr}`,
   },
 
   // ── Arbitrum ──
@@ -164,6 +192,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'ARB'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'ARB', to, amt),
+    history: addr => fetchEvmHistory(addr, 'ARBITRUM', '0x912CE59144191C1204E64559FE8253a0e49E6548', 18),
+    explorerAddr: addr => `https://arbiscan.io/address/${addr}`,
   },
   {
     id: 'ARB_ETH', name: 'Ethereum', symbol: 'ETH', category: 'Arbitrum',
@@ -172,6 +202,8 @@ const COINS = [
     balance: addr => EVMChains.getNative(addr, 'ARBITRUM'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendNative(m, 'ARBITRUM', to, amt),
+    history: addr => fetchEvmHistory(addr, 'ARBITRUM'),
+    explorerAddr: addr => `https://arbiscan.io/address/${addr}`,
   },
   {
     id: 'USDT_ARB', name: 'Tether USD', symbol: 'USDT', category: 'Arbitrum',
@@ -180,6 +212,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'USDT_ARB'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'USDT_ARB', to, amt),
+    history: addr => fetchEvmHistory(addr, 'ARBITRUM', '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', 6),
+    explorerAddr: addr => `https://arbiscan.io/address/${addr}`,
   },
   {
     id: 'USDC_ARB', name: 'USD Coin', symbol: 'USDC', category: 'Arbitrum',
@@ -188,6 +222,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'USDC_ARB'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'USDC_ARB', to, amt),
+    history: addr => fetchEvmHistory(addr, 'ARBITRUM', '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', 6),
+    explorerAddr: addr => `https://arbiscan.io/address/${addr}`,
   },
 
   // ── Optimism ──
@@ -198,6 +234,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'OP'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'OP', to, amt),
+    history: addr => fetchEvmHistory(addr, 'OPTIMISM', '0x4200000000000000000000000000000000000042', 18),
+    explorerAddr: addr => `https://optimistic.etherscan.io/address/${addr}`,
   },
   {
     id: 'OP_ETH', name: 'Ethereum', symbol: 'ETH', category: 'Optimism',
@@ -206,6 +244,8 @@ const COINS = [
     balance: addr => EVMChains.getNative(addr, 'OPTIMISM'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendNative(m, 'OPTIMISM', to, amt),
+    history: addr => fetchEvmHistory(addr, 'OPTIMISM'),
+    explorerAddr: addr => `https://optimistic.etherscan.io/address/${addr}`,
   },
   {
     id: 'USDT_OPT', name: 'Tether USD', symbol: 'USDT', category: 'Optimism',
@@ -214,6 +254,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'USDT_OPT'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'USDT_OPT', to, amt),
+    history: addr => fetchEvmHistory(addr, 'OPTIMISM', '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', 6),
+    explorerAddr: addr => `https://optimistic.etherscan.io/address/${addr}`,
   },
   {
     id: 'USDC_OPT', name: 'USD Coin', symbol: 'USDC', category: 'Optimism',
@@ -222,6 +264,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'USDC_OPT'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'USDC_OPT', to, amt),
+    history: addr => fetchEvmHistory(addr, 'OPTIMISM', '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', 6),
+    explorerAddr: addr => `https://optimistic.etherscan.io/address/${addr}`,
   },
 
   // ── Base ──
@@ -232,6 +276,8 @@ const COINS = [
     balance: addr => EVMChains.getNative(addr, 'BASE'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendNative(m, 'BASE', to, amt),
+    history: addr => fetchEvmHistory(addr, 'BASE'),
+    explorerAddr: addr => `https://basescan.org/address/${addr}`,
   },
   {
     id: 'USDT_BASE', name: 'Tether USD', symbol: 'USDT', category: 'Base',
@@ -240,6 +286,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'USDT_BASE'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'USDT_BASE', to, amt),
+    history: addr => fetchEvmHistory(addr, 'BASE', '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2', 6),
+    explorerAddr: addr => `https://basescan.org/address/${addr}`,
   },
   {
     id: 'USDC_BASE', name: 'USD Coin', symbol: 'USDC', category: 'Base',
@@ -248,6 +296,8 @@ const COINS = [
     balance: addr => EVMChains.getToken(addr, 'USDC_BASE'),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => EVMChains.sendToken(m, 'USDC_BASE', to, amt),
+    history: addr => fetchEvmHistory(addr, 'BASE', '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', 6),
+    explorerAddr: addr => `https://basescan.org/address/${addr}`,
   },
 
   // ── Monero ──
@@ -261,6 +311,7 @@ const COINS = [
       spendKey: await MoneroWallet.deriveSpendKeyHex(m),
       viewKey:  await MoneroWallet.deriveViewKeyHex(m),
     }),
+    explorerAddr: addr => `https://xmrchain.net/search?value=${addr}`,
     canSend: true, defaultEnabled: true,
     send: async (mnemonic, to, amt) => {
       const restoreHeight = parseInt(localStorage.getItem('xmr_restore_height') || '0');
@@ -281,6 +332,8 @@ const COINS = [
     balance: addr => TronWallet.getTRXBalance(addr),
     canSend: true, defaultEnabled: true,
     send: async (m, to, amt) => TronWallet.sendTRX(await TronWallet.derivePrivateKey(m), to, amt),
+    history: addr => TronWallet.getTRXHistory(addr),
+    explorerAddr: addr => `https://tronscan.org/#/address/${addr}`,
   },
   {
     id: 'USDT_TRC20', name: 'Tether USD', symbol: 'USDT', category: 'TRON',
@@ -289,6 +342,8 @@ const COINS = [
     balance: addr => TronWallet.getUSDTBalance(addr),
     canSend: true, defaultEnabled: true,
     send: async (m, to, amt) => TronWallet.sendUSDT(await TronWallet.derivePrivateKey(m), to, amt),
+    history: addr => TronWallet.getUSDTHistory(addr),
+    explorerAddr: addr => `https://tronscan.org/#/address/${addr}`,
   },
 
   // ── Litecoin ──
@@ -299,6 +354,8 @@ const COINS = [
     balance: addr => LitecoinWallet.getBalance(addr),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => LitecoinWallet.sendLTC(m, to, amt),
+    history: addr => LitecoinWallet.getHistory(addr),
+    explorerAddr: addr => `https://litecoinspace.org/address/${addr}`,
   },
 
   // ── Dogecoin ──
@@ -309,8 +366,77 @@ const COINS = [
     balance: addr => DogecoinWallet.getBalance(addr),
     canSend: true, defaultEnabled: false,
     send: async (m, to, amt) => DogecoinWallet.sendDOGE(m, to, amt),
+    history: addr => DogecoinWallet.getHistory(addr),
+    explorerAddr: addr => `https://dogechain.info/address/${addr}`,
   },
 ];
+
+// ── EVM chain config — Blockscout (free, no API key) + explorer links ─────────
+const CHAIN_CONFIG = {
+  ETH:       { blockscout: 'https://eth.blockscout.com',      explorer: 'https://etherscan.io' },
+  BSC:       { blockscout: 'https://bsc.blockscout.com',      explorer: 'https://bscscan.com' },
+  POLYGON:   { blockscout: 'https://polygon.blockscout.com',  explorer: 'https://polygonscan.com' },
+  AVALANCHE: { etherscan:  'https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan/api', explorer: 'https://snowtrace.io' },
+  ARBITRUM:  { blockscout: 'https://arbitrum.blockscout.com', explorer: 'https://arbiscan.io' },
+  OPTIMISM:  { blockscout: 'https://optimism.blockscout.com', explorer: 'https://optimistic.etherscan.io' },
+  BASE:      { blockscout: 'https://base.blockscout.com',     explorer: 'https://basescan.org' },
+};
+
+async function _blockscoutHistory(addr, base, explorer, tokenAddr, decimals) {
+  const url = tokenAddr
+    ? `${base}/api/v2/addresses/${addr}/token-transfers?token=${tokenAddr}`
+    : `${base}/api/v2/addresses/${addr}/transactions`;
+  const r = await fetch(url, { signal: AbortSignal.timeout(12000) });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const j = await r.json();
+  return (j.items || []).map(tx => {
+    const hash   = tokenAddr ? (tx.transaction_hash || tx.tx_hash) : tx.hash;
+    const from   = (tx.from?.hash || '').toLowerCase();
+    const isSend = from === addr.toLowerCase();
+    const dec    = Number(tx.total?.decimals ?? decimals ?? 18);
+    const amount = tokenAddr
+      ? parseFloat(ethers.formatUnits(tx.total?.value || '0', dec)).toFixed(dec <= 6 ? 2 : 4)
+      : parseFloat(ethers.formatEther(tx.value || '0')).toFixed(6);
+    const txStatus = tokenAddr ? 'ok' : (tx.status === 'ok' ? 'ok' : tx.status === 'error' ? 'error' : 'pending');
+    return {
+      hash, type: isSend ? 'send' : 'receive', amount,
+      time: tx.timestamp ? new Date(tx.timestamp).getTime() : null,
+      confirmed: txStatus === 'ok',
+      status: txStatus,
+      errorMsg: txStatus === 'error' ? (tx.revert_reason?.raw || tx.error || 'Reverted') : null,
+      explorerUrl: `${explorer}/tx/${hash}`,
+    };
+  });
+}
+
+async function _etherscanHistory(addr, apiBase, explorer, tokenAddr, decimals) {
+  const params = new URLSearchParams({
+    module: 'account', action: tokenAddr ? 'tokentx' : 'txlist',
+    address: addr, sort: 'desc', offset: '25', apikey: '',
+  });
+  if (tokenAddr) params.set('contractaddress', tokenAddr);
+  const r = await fetch(`${apiBase}?${params}`, { signal: AbortSignal.timeout(10000) });
+  const j = await r.json();
+  if (j.status !== '1' || !Array.isArray(j.result)) throw new Error(j.message || 'No results');
+  return j.result.map(tx => ({
+    hash: tx.hash,
+    type: tx.from.toLowerCase() === addr.toLowerCase() ? 'send' : 'receive',
+    amount: tokenAddr
+      ? parseFloat(ethers.formatUnits(tx.value || '0', decimals)).toFixed(decimals <= 6 ? 2 : 4)
+      : parseFloat(ethers.formatEther(tx.value || '0')).toFixed(6),
+    time: parseInt(tx.timeStamp) * 1000, confirmed: tx.isError !== '1',
+    status: tx.isError === '1' ? 'error' : 'ok',
+    errorMsg: tx.isError === '1' ? (tx.errDescription || 'Failed') : null,
+    explorerUrl: `${explorer}/tx/${tx.hash}`,
+  }));
+}
+
+async function fetchEvmHistory(addr, chainKey, tokenAddr, decimals) {
+  const cfg = CHAIN_CONFIG[chainKey];
+  if (!cfg) return [];
+  if (cfg.blockscout) return _blockscoutHistory(addr, cfg.blockscout, cfg.explorer, tokenAddr, decimals);
+  return _etherscanHistory(addr, cfg.etherscan, cfg.explorer, tokenAddr, decimals);
+}
 
 // ── EVM gas table — which chain each coin is on and which coin pays gas ───────
 const EVM_GAS = {
@@ -349,6 +475,57 @@ async function estimateEvmFee(coinId) {
   return { ...info, feeId: g.feeId };
 }
 
+// ── USD price (CoinGecko free API, no key required) ───────────────────────────
+const PRICE_IDS = {
+  BTC:        'bitcoin',
+  ETH:        'ethereum',
+  USDT_ERC20: 'tether',     USDC_ERC20: 'usd-coin',   DAI:        'dai',
+  BNB:        'binancecoin',
+  USDT_BEP20: 'tether',     USDC_BEP20: 'usd-coin',
+  POL:        'matic-network',
+  USDT_POLY:  'tether',     USDC_POLY:  'usd-coin',
+  AVAX:       'avalanche-2',
+  USDT_AVAX:  'tether',     USDC_AVAX:  'usd-coin',
+  ARB:        'arbitrum',   ARB_ETH:    'ethereum',
+  USDT_ARB:   'tether',     USDC_ARB:   'usd-coin',
+  OP:         'optimism',   OP_ETH:     'ethereum',
+  USDT_OPT:   'tether',     USDC_OPT:   'usd-coin',
+  BASE_ETH:   'ethereum',
+  USDT_BASE:  'tether',     USDC_BASE:  'usd-coin',
+  XMR:        'monero',
+  TRX:        'tron',       USDT_TRC20: 'tether',
+  LTC:        'litecoin',
+  DOGE:       'dogecoin',
+};
+
+function formatUSD(balStr, price) {
+  if (!price || !balStr || balStr === '…' || balStr === '—') return '';
+  const bal = parseFloat(balStr);
+  if (isNaN(bal) || bal < 0) return '';
+  const usd = bal * price;
+  if (usd === 0) return '$0.00';
+  if (usd < 0.01) return '<$0.01';
+  if (usd < 1000) return '$' + usd.toFixed(2);
+  return '$' + usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+async function fetchPrices() {
+  const ids = [...new Set(Object.values(PRICE_IDS))].join(',');
+  try {
+    const r = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`,
+      { signal: AbortSignal.timeout(10000) }
+    );
+    if (!r.ok) return;
+    const data = await r.json();
+    for (const [coinId, cgId] of Object.entries(PRICE_IDS)) {
+      if (data[cgId]?.usd != null) state.prices[coinId] = data[cgId].usd;
+    }
+    updateBalCard();
+    getActiveCoins().forEach(c => updateSidebarBal(c.id));
+  } catch {}
+}
+
 // ── Enabled coins (persisted) ─────────────────────────────────────────────────
 const DEFAULT_ENABLED = new Set(COINS.filter(c => c.defaultEnabled).map(c => c.id));
 
@@ -373,6 +550,7 @@ const state = {
   addresses: {},
   balances: {},
   extras: {},
+  prices: {},
   active: 'BTC',
 };
 
@@ -489,6 +667,11 @@ async function completeSetup(mnemonic, restoreHeight, password) {
     const encrypted = await encryptMnemonic(mnemonic, password);
     localStorage.setItem('wallet_encrypted', encrypted);
     localStorage.setItem('xmr_restore_height', String(restoreHeight ?? 0));
+    // Verify we can decrypt back to the original mnemonic before discarding the legacy plaintext.
+    // This guards against quota errors, partial writes, and crypto bugs that could otherwise lose the seed.
+    const stored = localStorage.getItem('wallet_encrypted');
+    const roundTrip = await decryptMnemonic(stored, password);
+    if (roundTrip !== mnemonic) throw new Error('Encrypted wallet failed verification — refusing to discard backup');
     localStorage.removeItem('wallet_mnemonic'); // remove legacy plaintext if any
     state.mnemonic = mnemonic;
     await loadWallet();
@@ -577,6 +760,7 @@ async function loadWallet() {
   const first = getActiveCoins()[0];
   if (first) selectCoin(first.id);
   refreshBalances();
+  fetchPrices();
 }
 
 // ── Balance refresh ───────────────────────────────────────────────────────────
@@ -617,7 +801,10 @@ function renderCoinList() {
 function updateSidebarBal(id) {
   const el = document.getElementById(`sb-${id}`);
   const coin = COINS.find(c => c.id === id);
-  if (el && coin) el.textContent = `${state.balances[id] ?? '…'} ${coin.symbol}`;
+  if (!el || !coin) return;
+  const bal = state.balances[id] ?? '…';
+  const usd = formatUSD(bal, state.prices[id]);
+  el.innerHTML = `${bal} ${coin.symbol}${usd ? `<span style="display:block;font-size:11px">${usd}</span>` : ''}`;
 }
 
 function selectCoin(id) {
@@ -632,6 +819,7 @@ function selectCoin(id) {
   updateBalCard();
   updateReceiveTab();
   updateSendTab();
+  if (document.getElementById('tab-history')?.classList.contains('active')) updateHistoryTab();
 }
 
 function updateBalCard() {
@@ -647,8 +835,10 @@ function updateBalCard() {
   } else {
     net.style.display = 'none';
   }
-  document.getElementById('bal-amount').textContent =
-    `${state.balances[state.active] ?? '…'} ${coin.symbol}`;
+  const bal = state.balances[state.active] ?? '…';
+  document.getElementById('bal-amount').textContent = `${bal} ${coin.symbol}`;
+  const usd = formatUSD(bal, state.prices[state.active]);
+  document.getElementById('bal-usd').textContent = usd ? `≈ ${usd}` : '';
 }
 
 function updateReceiveTab() {
@@ -715,6 +905,7 @@ function copyXmrKey(elId) {
 }
 
 function updateSendTab() {
+  clearFeeTimer();
   const coin = COINS.find(c => c.id === state.active);
   document.getElementById('send-unavailable').style.display = coin.canSend ? 'none' : 'block';
   document.getElementById('send-form').style.display = coin.canSend ? 'block' : 'none';
@@ -729,27 +920,112 @@ function updateSendTab() {
       feeRow.style.display = 'block';
       feeDisplay.textContent = 'Estimating…';
       delete feeRow.dataset.fee;
-      estimateEvmFee(coin.id).then(info => {
-        feeDisplay.textContent = `~${info.fee} ${info.symbol}`;
-        feeRow.dataset.fee   = info.fee;
-        feeRow.dataset.feeId = info.feeId;
-        feeRow.dataset.token = EVM_GAS[coin.id].token ? '1' : '0';
+      const coinId = coin.id;
+      estimateEvmFee(coinId).then(info => {
+        feeDisplay.textContent = `~${info.fee} ${info.symbol} · ${info.gwei} gwei`;
+        feeRow.dataset.fee    = info.fee;
+        feeRow.dataset.feeId  = info.feeId;
+        feeRow.dataset.token  = EVM_GAS[coinId].token ? '1' : '0';
+        feeRow.dataset.rollup = info.isRollup ? '1' : '0';
 
-        // Auto-fill max sendable amount
-        const bal = parseFloat(state.balances[coin.id] || '0');
+        // Auto-fill max sendable amount (use 1.5x buffer on rollups for L1 data fee)
+        const bal = parseFloat(state.balances[coinId] || '0');
         if (bal > 0) {
           const amtInput = document.getElementById('send-amount');
-          if (EVM_GAS[coin.id].token) {
+          if (EVM_GAS[coinId].token) {
             amtInput.value = bal.toString();
           } else {
-            const max = Math.max(0, bal - parseFloat(info.fee) * 1.2);
+            const buffer = info.isRollup ? 1.5 : 1.2;
+            const max = Math.max(0, bal - parseFloat(info.fee) * buffer);
             if (max > 0) amtInput.value = max.toFixed(6);
           }
         }
+
+        // Refresh every 15 s while send tab is open
+        _feeTimer = setInterval(() => refreshFeeDisplay(coinId), 15000);
       }).catch(() => { feeDisplay.textContent = 'Unable to estimate'; });
     } else {
       feeRow.style.display = 'none';
     }
+  }
+}
+
+// ── History tab ───────────────────────────────────────────────────────────────
+function timeAgo(ms) {
+  const s = Math.floor((Date.now() - ms) / 1000);
+  if (s < 60)   return 'Just now';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  if (s < 2592000) return Math.floor(s / 86400) + 'd ago';
+  return new Date(ms).toLocaleDateString();
+}
+
+async function updateHistoryTab() {
+  const coin = COINS.find(c => c.id === state.active);
+  const list = document.getElementById('history-list');
+  if (!list) return;
+
+  if (!coin.history) {
+    const link = coin.explorerAddr
+      ? `<a href="${coin.explorerAddr(state.addresses[coin.id])}" target="_blank" rel="noopener"
+           style="color:#f97316;text-decoration:none">View address on explorer ↗</a>` : '';
+    list.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:12px 0">
+      History not available for ${coin.name}.<br>${link}</p>`;
+    return;
+  }
+
+  list.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:8px 0">Loading…</p>`;
+  try {
+    const addr = state.addresses[coin.id];
+    const txs  = await coin.history(addr);
+    if (!txs || txs.length === 0) {
+      const link = coin.explorerAddr
+        ? `<a href="${coin.explorerAddr(addr)}" target="_blank" rel="noopener"
+             style="color:#f97316;text-decoration:none;display:block;margin-top:6px">View on explorer ↗</a>` : '';
+      list.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:12px 0">No transactions found.${link}</p>`;
+      return;
+    }
+    list.innerHTML = txs.map(tx => {
+      const send = tx.type === 'send';
+      const time = tx.time ? timeAgo(tx.time) : 'Pending';
+      const st   = tx.status || (tx.confirmed ? 'ok' : 'pending');
+      const badge = st === 'error'
+        ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600;
+             background:rgba(239,68,68,0.15);color:#ef4444">
+             Failed${tx.errorMsg ? ': ' + tx.errorMsg : ''}</span>`
+        : st === 'pending'
+        ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600;
+             background:rgba(234,179,8,0.15);color:#eab308">Pending</span>`
+        : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600;
+             background:rgba(34,197,94,0.15);color:#22c55e">Completed</span>`;
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
+          justify-content:center;font-size:15px;
+          background:${send ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)'};
+          color:${send ? '#ef4444' : '#22c55e'}">
+          ${send ? '↑' : '↓'}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600">${send ? 'Sent' : 'Received'} ${tx.amount} ${coin.symbol}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px;display:flex;align-items:center;gap:6px">
+            <span>${time}</span>${badge}
+          </div>
+        </div>
+        ${tx.explorerUrl
+          ? `<a href="${tx.explorerUrl}" target="_blank" rel="noopener"
+               title="View on explorer"
+               style="color:var(--text2);font-size:20px;text-decoration:none;flex-shrink:0;padding:4px;
+                      line-height:1;transition:color 0.15s"
+               onmouseover="this.style.color='#f97316'" onmouseout="this.style.color='var(--text2)'">↗</a>`
+          : ''}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    const link = coin.explorerAddr
+      ? `<a href="${coin.explorerAddr(state.addresses[coin.id])}" target="_blank" rel="noopener"
+           style="color:#f97316;text-decoration:none;display:block;margin-top:6px">View on explorer ↗</a>` : '';
+    list.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:12px 0">
+      Could not load history: ${e.message}<br>${link}</p>`;
   }
 }
 
@@ -761,19 +1037,69 @@ document.addEventListener('click', e => {
   tab.closest('.tabs').querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
   document.getElementById('tab-receive').classList.toggle('active', id === 'receive');
   document.getElementById('tab-send').classList.toggle('active', id === 'send');
+  document.getElementById('tab-history').classList.toggle('active', id === 'history');
+  if (id !== 'send') clearFeeTimer();
+  if (id === 'send' && EVM_GAS[state.active]) {
+    refreshFeeDisplay(state.active);
+    if (!_feeTimer) _feeTimer = setInterval(() => refreshFeeDisplay(state.active), 15000);
+  }
+  if (id === 'history') updateHistoryTab();
 });
 
 document.getElementById('receive-tab-btn').onclick = () => {
+  clearFeeTimer();
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'receive'));
   document.getElementById('tab-receive').classList.add('active');
   document.getElementById('tab-send').classList.remove('active');
+  document.getElementById('tab-history').classList.remove('active');
 };
 
 document.getElementById('send-tab-btn').onclick = () => {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'send'));
   document.getElementById('tab-send').classList.add('active');
   document.getElementById('tab-receive').classList.remove('active');
+  document.getElementById('tab-history').classList.remove('active');
 };
+
+// ── Address validation ────────────────────────────────────────────────────────
+// Verifies checksums where possible (BTC/LTC/DOGE via UTXOCrypto.addressToScript,
+// TRX via TronWeb.isAddress) so a typo doesn't get accepted and broadcast.
+function validateAddress(address, coinId) {
+  if (!address) return 'Recipient address is required';
+  if (EVM_GAS[coinId]) {
+    if (!ethers.isAddress(address)) return 'Invalid Ethereum address';
+    return null;
+  }
+  if (coinId === 'TRX' || coinId === 'USDT_TRC20') {
+    if (!address.startsWith('T') || address.length !== 34) return 'Invalid TRON address (should start with T, 34 chars)';
+    try { if (typeof TronWeb !== 'undefined' && !TronWeb.isAddress(address)) return 'Invalid TRON address checksum'; } catch {}
+    return null;
+  }
+  if (coinId === 'BTC') {
+    if (!address.startsWith('bc1') && !address.startsWith('1') && !address.startsWith('3'))
+      return 'Invalid Bitcoin address';
+    try { UTXOCrypto.addressToScript(address, 'bc'); } catch(e) { return 'Invalid Bitcoin address: ' + e.message; }
+    return null;
+  }
+  if (coinId === 'LTC') {
+    if (!address.startsWith('ltc1') && !address.startsWith('L') && !address.startsWith('M'))
+      return 'Invalid Litecoin address';
+    try { UTXOCrypto.addressToScript(address, 'ltc'); } catch(e) { return 'Invalid Litecoin address: ' + e.message; }
+    return null;
+  }
+  if (coinId === 'DOGE') {
+    if (!address.startsWith('D') || address.length < 26 || address.length > 36)
+      return 'Invalid Dogecoin address';
+    try { UTXOCrypto.addressToScript(address, null); } catch(e) { return 'Invalid Dogecoin address: ' + e.message; }
+    return null;
+  }
+  if (coinId === 'XMR') {
+    if ((!address.startsWith('4') && !address.startsWith('8')) || address.length !== 95)
+      return 'Invalid Monero address';
+    return null;
+  }
+  return null;
+}
 
 // ── Send ──────────────────────────────────────────────────────────────────────
 document.getElementById('send-max-btn').onclick = () => {
@@ -783,7 +1109,10 @@ document.getElementById('send-max-btn').onclick = () => {
   const feeRow = document.getElementById('send-fee-row');
   const g = EVM_GAS[coin.id];
   if (g && !g.token && feeRow.dataset.fee) {
-    const fee = parseFloat(feeRow.dataset.fee) * 1.2; // 20% buffer
+    // Match the buffer used in pre-send validation: 1.5x on rollups, 1.2x on L1
+    const isRollup = feeRow.dataset.rollup === '1';
+    const buffer = isRollup ? 1.5 : 1.2;
+    const fee = parseFloat(feeRow.dataset.fee) * buffer;
     document.getElementById('send-amount').value = Math.max(0, balance - fee).toFixed(6);
   } else {
     document.getElementById('send-amount').value = balance.toString();
@@ -795,30 +1124,43 @@ document.getElementById('do-send-btn').onclick = async () => {
   const to  = document.getElementById('send-to').value.trim();
   const amt = document.getElementById('send-amount').value.trim();
   if (!to || !amt || parseFloat(amt) <= 0) { toast('Enter a valid address and amount.'); return; }
+  const addrErr = validateAddress(to, coin.id);
+  if (addrErr) { toast(addrErr); return; }
+  const feeText = document.getElementById('send-fee-display')?.textContent || '';
+  // Show full address in confirm dialog so a clipboard-poisoning swap is visible
+  const confirmMsg = `Send ${amt} ${coin.symbol}?\n\nTo:\n${to}\n${feeText ? '\nFee: ' + feeText : ''}`;
+  if (!confirm(confirmMsg)) return;
   const btn = document.getElementById('do-send-btn');
   btn.disabled = true; btn.textContent = 'Sending…';
   try {
     // EVM gas pre-validation
     const g = EVM_GAS[coin.id];
     if (g) {
-      try {
-        const feeInfo = await estimateEvmFee(coin.id);
-        if (feeInfo) {
-          const fee = parseFloat(feeInfo.fee) * 1.2; // 20% buffer
-          const feeBal = state.balances[feeInfo.feeId];
-          if (feeBal !== undefined) {
-            if (parseFloat(feeBal) < fee)
-              throw new Error(`Not enough ${feeInfo.symbol} for gas fee. Need ~${feeInfo.fee} ${feeInfo.symbol}`);
-            if (!g.token) {
-              const bal = parseFloat(state.balances[coin.id] || '0');
-              if (parseFloat(amt) + fee > bal)
-                throw new Error(`Insufficient balance for gas. Max sendable: ~${Math.max(0, bal - fee).toFixed(6)} ${coin.symbol}`);
-            }
-          }
+      const feeInfo = await estimateEvmFee(coin.id).catch(() => null);
+      if (feeInfo) {
+        // L2 rollups (Optimism / Base / Arbitrum) charge an L1 data fee on top of L2 gas.
+        // estimateFee already widens gasLimit 3x for rollups; here we apply a 1.5x buffer
+        // for rollups vs 1.2x for L1 chains, and require successful balance fetch.
+        const buffer = feeInfo.isRollup ? 1.5 : 1.2;
+        const fee = parseFloat(feeInfo.fee) * buffer;
+        let feeBal = state.balances[feeInfo.feeId];
+        if (feeBal === undefined) {
+          // Gas coin may not be enabled — fetch live so the check is never skipped on user-initiated send
+          const addr = state.addresses[coin.id]; // all EVM chains share the same address
+          feeBal = g.chain === 'ETH'
+            ? await EthereumWallet.getETHBalance(addr)
+            : await EVMChains.getNative(addr, g.chain);
         }
-      } catch(e) {
-        if (e.message.startsWith('Not enough') || e.message.startsWith('Insufficient')) throw e;
+        if (parseFloat(feeBal) < fee)
+          throw new Error(`Not enough ${feeInfo.symbol} for gas fee. Need ~${fee.toFixed(6)} ${feeInfo.symbol}, have ${feeBal}`);
+        if (!g.token) {
+          const bal = parseFloat(state.balances[coin.id] || '0');
+          if (parseFloat(amt) + fee > bal)
+            throw new Error(`Insufficient balance for gas. Max sendable: ~${Math.max(0, bal - fee).toFixed(6)} ${coin.symbol}`);
+        }
       }
+      // If feeInfo is null (estimateEvmFee failed), proceed — chain RPC will reject if truly underfunded.
+      // Better than silently blocking sends on a flaky public RPC.
     }
     const txid = await coin.send(state.mnemonic, to, amt);
     toast(`Sent! TX: ${String(txid).slice(0, 20)}…`);
@@ -851,6 +1193,7 @@ document.getElementById('refresh-btn').onclick = async () => {
 // ── Lock ──────────────────────────────────────────────────────────────────────
 document.getElementById('lock-btn').onclick = () => {
   if (!confirm('Lock wallet? Your encrypted wallet stays on this device. Enter your password to unlock again.')) return;
+  clearFeeTimer();
   state.mnemonic = null;
   Object.assign(state, { addresses: {}, balances: {}, extras: {}, active: 'BTC' });
   document.getElementById('sidebar').style.display = 'none';
@@ -919,14 +1262,60 @@ function renderSettingsList() {
     }).join('');
   }
   html += `<div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
+  <div style="font-size:13px;font-weight:600;margin-bottom:6px">Legacy ETH Recovery</div>
+  <p style="font-size:12px;color:var(--text2);margin-bottom:10px">A previous version of this wallet derived ETH addresses differently. If you sent ETH to an old address, sweep it to your current address here.</p>
+  <div id="legacy-recovery-area" style="font-size:13px;color:var(--text2);margin-bottom:16px">Checking legacy address…</div>
+</div>
+<div style="padding-top:8px;border-top:1px solid var(--border)">
   <button class="btn btn-danger" onclick="confirmResetWallet()" style="width:100%;font-size:13px">Remove Wallet from this Device</button>
 </div>`;
   document.getElementById('settings-coin-list').innerHTML = html;
+  loadLegacyRecovery();
 }
 
 function confirmResetWallet() {
   if (confirm('Permanently remove this wallet from the device? Make absolutely sure your recovery phrase is backed up.')) {
     localStorage.clear(); location.reload();
+  }
+}
+
+async function loadLegacyRecovery() {
+  if (!state.mnemonic) return;
+  const area = document.getElementById('legacy-recovery-area');
+  if (!area) return;
+  try {
+    const { address: legacyAddr } = await EthereumWallet.deriveLegacyAddress(state.mnemonic);
+    const bal = await EthereumWallet.getETHBalance(legacyAddr);
+    const balNum = parseFloat(bal);
+    const shortAddr = `${legacyAddr.slice(0, 10)}…${legacyAddr.slice(-8)}`;
+    if (balNum <= 0) {
+      area.innerHTML = `<span style="color:var(--text2)">Legacy address <code style="font-size:11px">${shortAddr}</code> — no ETH found.</span>`;
+      return;
+    }
+    area.innerHTML = `
+      <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Legacy address</div>
+        <code style="font-size:11px;word-break:break-all">${legacyAddr}</code>
+      </div>
+      <div style="font-size:14px;font-weight:600;margin-bottom:10px;color:#f97316">Found: ${bal} ETH</div>
+      <button class="btn btn-primary btn-sm" id="sweep-legacy-btn" style="width:100%">
+        Sweep ${bal} ETH → current wallet
+      </button>`;
+    document.getElementById('sweep-legacy-btn').onclick = async () => {
+      const btn = document.getElementById('sweep-legacy-btn');
+      btn.disabled = true; btn.textContent = 'Sending…';
+      try {
+        const txid = await EthereumWallet.sweepLegacy(state.mnemonic);
+        area.innerHTML = `<div style="color:#22c55e;font-size:13px">Swept! TX: ${String(txid).slice(0, 22)}…<br><span style="color:var(--text2);font-size:12px">ETH balance will update shortly.</span></div>`;
+        setTimeout(refreshBalances, 15000);
+      } catch(e) {
+        btn.disabled = false; btn.textContent = `Sweep ${bal} ETH → current wallet`;
+        toast(`Error: ${e.message}`);
+      }
+    };
+  } catch(e) {
+    const el = document.getElementById('legacy-recovery-area');
+    if (el) el.innerHTML = `<span style="color:var(--text2);font-size:12px">Error: ${e.message}</span>`;
   }
 }
 
@@ -968,6 +1357,25 @@ function handleCoinToggle(checkbox) {
   }
 }
 
+// ── Fee polling ───────────────────────────────────────────────────────────────
+let _feeTimer = null;
+function clearFeeTimer() { clearInterval(_feeTimer); _feeTimer = null; }
+
+async function refreshFeeDisplay(coinId) {
+  const feeRow     = document.getElementById('send-fee-row');
+  const feeDisplay = document.getElementById('send-fee-display');
+  if (!feeRow || !feeDisplay) return;
+  if (!document.getElementById('tab-send')?.classList.contains('active')) { clearFeeTimer(); return; }
+  try {
+    const info = await estimateEvmFee(coinId);
+    if (!info) return;
+    feeDisplay.textContent = `~${info.fee} ${info.symbol} · ${info.gwei} gwei`;
+    feeRow.dataset.fee    = info.fee;
+    feeRow.dataset.feeId  = info.feeId;
+    feeRow.dataset.rollup = info.isRollup ? '1' : '0';
+  } catch {}
+}
+
 // ── Toast ─────────────────────────────────────────────────────────────────────
 let _toastTimer;
 function toast(msg, ms = 3000) {
@@ -978,8 +1386,9 @@ function toast(msg, ms = 3000) {
   _toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
 
-// Auto-refresh balances every 60 seconds while wallet is unlocked
+// Auto-refresh balances every 60 s, prices every 5 min while wallet is unlocked
 setInterval(() => { if (state.mnemonic) refreshBalances(); }, 60000);
+setInterval(() => { if (state.mnemonic) fetchPrices(); }, 300000);
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 (async () => {

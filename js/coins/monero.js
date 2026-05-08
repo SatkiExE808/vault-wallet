@@ -191,7 +191,7 @@ const MoneroWallet = (() => {
         if (d.result?.count) return d.result.count - 5;
       } catch { /* try next */ }
     }
-    return 3450000; // fallback: approximate May 2025 height
+    return 3710000; // fallback: approximate May 2026 height
   }
 
   // ── Public API ───────────────────────────────────────────────────────────────

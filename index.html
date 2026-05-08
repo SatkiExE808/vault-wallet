@@ -52,7 +52,7 @@
           <span class="network-badge" id="bal-network" style="display:none"></span>
         </div>
         <div class="amount" id="bal-amount">—</div>
-        <div class="amount-usd" id="bal-usd"></div>
+        <div id="bal-usd" style="font-size:16px;color:var(--text2);margin-top:4px;min-height:22px"></div>
         <div class="balance-actions">
           <button class="btn btn-primary btn-sm" id="receive-tab-btn">Receive</button>
           <button class="btn btn-outline btn-sm" id="send-tab-btn">Send</button>
@@ -64,6 +64,7 @@
         <div class="tabs">
           <div class="tab active" data-tab="receive">Receive</div>
           <div class="tab" data-tab="send">Send</div>
+          <div class="tab" data-tab="history">History</div>
         </div>
         <hr class="divider">
 
@@ -73,6 +74,10 @@
             <code id="address-display">—</code>
             <button class="btn btn-outline btn-sm" id="copy-btn">Copy</button>
           </div>
+        </div>
+
+        <div class="tab-content" id="tab-history">
+          <div id="history-list" style="padding:4px 0"></div>
         </div>
 
         <div class="tab-content" id="tab-send">

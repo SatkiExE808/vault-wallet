@@ -2,11 +2,14 @@ const TronWallet = (() => {
   const TRONGRID = 'https://api.trongrid.io';
   const USDT_TRC20 = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 
+  // Set a TronGrid API key here for higher rate limits. Empty string would still
+  // count against the unauthenticated quota AND get rejected by some proxies, so we
+  // omit the header entirely when no key is configured.
+  const TRONGRID_API_KEY = '';
+
   function getTronWeb(privateKey = null) {
-    const config = {
-      fullHost: TRONGRID,
-      headers: { 'TRON-PRO-API-KEY': '' }
-    };
+    const config = { fullHost: TRONGRID };
+    if (TRONGRID_API_KEY) config.headers = { 'TRON-PRO-API-KEY': TRONGRID_API_KEY };
     if (privateKey) config.privateKey = privateKey;
     return new TronWeb(config);
   }
@@ -52,7 +55,7 @@ const TronWallet = (() => {
   }
 
   async function derivePrivateKey(mnemonic) {
-    const child = ethers.HDNodeWallet.fromPhrase(mnemonic).derivePath("m/44'/195'/0'/0/0");
+    const child = ethers.HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/195'/0'/0/0");
     return child.privateKey.replace('0x', '');
   }
 
@@ -63,5 +66,33 @@ const TronWallet = (() => {
     } catch(e) { console.error('TRX derive:', e); return null; }
   }
 
-  return { getTRXBalance, getUSDTBalance, sendUSDT, sendTRX, privateKeyToTronAddress, deriveAddress, derivePrivateKey };
+  async function getTRXHistory(address) {
+    const r = await fetch(`${TRONGRID}/v1/accounts/${address}/transactions?limit=20&only_confirmed=true`, { signal: AbortSignal.timeout(10000) });
+    const j = await r.json();
+    return (j.data || [])
+      .filter(tx => tx.raw_data?.contract?.[0]?.type === 'TransferContract')
+      .map(tx => {
+        const val  = tx.raw_data.contract[0].parameter.value;
+        const from = TronWeb.address.fromHex(val.owner_address);
+        return {
+          hash: tx.txID, type: from === address ? 'send' : 'receive',
+          amount: (val.amount / 1e6).toFixed(6),
+          time: tx.block_timestamp, confirmed: true, status: 'ok',
+          explorerUrl: `https://tronscan.org/#/transaction/${tx.txID}`,
+        };
+      });
+  }
+
+  async function getUSDTHistory(address) {
+    const r = await fetch(`${TRONGRID}/v1/accounts/${address}/transactions/trc20?limit=20&contract_address=${USDT_TRC20}`, { signal: AbortSignal.timeout(10000) });
+    const j = await r.json();
+    return (j.data || []).map(tx => ({
+      hash: tx.transaction_id, type: tx.from === address ? 'send' : 'receive',
+      amount: (Number(tx.value) / 1e6).toFixed(2),
+      time: tx.block_timestamp, confirmed: true, status: 'ok',
+      explorerUrl: `https://tronscan.org/#/transaction/${tx.transaction_id}`,
+    }));
+  }
+
+  return { getTRXBalance, getUSDTBalance, sendUSDT, sendTRX, privateKeyToTronAddress, deriveAddress, derivePrivateKey, getTRXHistory, getUSDTHistory };
 })();

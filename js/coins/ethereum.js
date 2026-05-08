@@ -1,8 +1,8 @@
 const EthereumWallet = (() => {
   const ETH_RPCS = [
     'https://eth.llamarpc.com',
-    'https://rpc.ankr.com/eth',
     'https://ethereum.publicnode.com',
+    'https://rpc.flashbots.net',
   ];
 
   async function rpcCall(method, params) {
@@ -44,8 +44,10 @@ const EthereumWallet = (() => {
   async function estimateFee(isToken = false) {
     const gasPriceHex = await rpcCall('eth_gasPrice', []);
     const gasPrice = BigInt(gasPriceHex);
-    const gasLimit = isToken ? 65000n : 21000n;
-    return { fee: parseFloat(ethers.formatEther(gasPrice * gasLimit)).toFixed(6), symbol: 'ETH' };
+    const gasLimit = isToken ? 100000n : 21000n;
+    const gweiVal  = parseFloat(ethers.formatUnits(gasPrice, 'gwei'));
+    const gwei     = gweiVal < 1 ? gweiVal.toFixed(3) : gweiVal < 100 ? gweiVal.toFixed(1) : gweiVal.toFixed(0);
+    return { fee: parseFloat(ethers.formatEther(gasPrice * gasLimit)).toFixed(6), symbol: 'ETH', gwei, isRollup: false };
   }
 
   async function sendETH(privateKey, toAddress, amount) {
@@ -88,5 +90,39 @@ const EthereumWallet = (() => {
     return ethers.Wallet.fromPhrase(mnemonic).privateKey;
   }
 
-  return { getETHBalance, getTokenBalance, estimateFee, sendETH, sendToken, deriveAddress, derivePrivateKey };
+  // Old bug: HDNodeWallet.fromPhrase already derives at m/44'/60'/0'/0/0,
+  // then calling .derivePath("m/44'/60'/0'/0/0") on it re-derives relative to that node,
+  // ending up at m/44'/60'/0'/0/0/44'/60'/0'/0/0 — a non-standard address.
+  async function deriveLegacyAddress(mnemonic) {
+    // fromPhrase() lands at m/44'/60'/0'/0/0 (the default path).
+    // The old bug then called .derivePath("m/44'/60'/0'/0/0") on that node,
+    // which re-derives 44'/60'/0'/0/0 relative to the current node,
+    // ending at m/44'/60'/0'/0/0/44'/60'/0'/0/0.
+    const mid = ethers.HDNodeWallet.fromPhrase(mnemonic);
+    const legacy = mid.derivePath("44'/60'/0'/0/0");
+    return { address: legacy.address, privateKey: legacy.privateKey };
+  }
+
+  async function sweepLegacy(mnemonic) {
+    const { address: legacyAddr, privateKey } = await deriveLegacyAddress(mnemonic);
+    const currentAddr = await deriveAddress(mnemonic);
+    const balHex = await rpcCall('eth_getBalance', [legacyAddr, 'latest']);
+    const balWei = BigInt(balHex);
+    const gasPriceHex = await rpcCall('eth_gasPrice', []);
+    const gasPrice = BigInt(gasPriceHex);
+    const gasLimit = 21000n;
+    const gasCost = gasPrice * gasLimit;
+    if (balWei <= gasCost) throw new Error('Balance too low to cover gas fee');
+    const valueWei = balWei - gasCost;
+    const nonceHex = await rpcCall('eth_getTransactionCount', [legacyAddr, 'latest']);
+    const wallet = new ethers.Wallet(privateKey);
+    const tx = ethers.Transaction.from({
+      to: currentAddr, value: valueWei,
+      nonce: parseInt(nonceHex, 16), gasPrice,
+      gasLimit: 21000, chainId: 1,
+    });
+    return rpcCall('eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
+  }
+
+  return { getETHBalance, getTokenBalance, estimateFee, sendETH, sendToken, deriveAddress, derivePrivateKey, deriveLegacyAddress, sweepLegacy };
 })();

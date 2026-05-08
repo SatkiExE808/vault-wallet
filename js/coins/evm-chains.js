@@ -6,13 +6,13 @@ const EVMChains = (() => {
   };
 
   const RPCS = {
-    ETH:       ['https://eth.llamarpc.com', 'https://rpc.ankr.com/eth', 'https://ethereum.publicnode.com'],
-    BSC:       ['https://bsc-dataseed.binance.org/', 'https://rpc.ankr.com/bsc'],
-    POLYGON:   ['https://polygon-rpc.com/', 'https://rpc.ankr.com/polygon'],
-    AVALANCHE: ['https://api.avax.network/ext/bc/C/rpc', 'https://rpc.ankr.com/avalanche'],
-    ARBITRUM:  ['https://arb1.arbitrum.io/rpc', 'https://rpc.ankr.com/arbitrum'],
-    OPTIMISM:  ['https://mainnet.optimism.io', 'https://rpc.ankr.com/optimism'],
-    BASE:      ['https://mainnet.base.org', 'https://rpc.ankr.com/base'],
+    ETH:       ['https://eth.llamarpc.com', 'https://ethereum.publicnode.com', 'https://rpc.flashbots.net'],
+    BSC:       ['https://bsc-dataseed.binance.org/', 'https://bsc-dataseed1.binance.org/', 'https://bsc.publicnode.com'],
+    POLYGON:   ['https://polygon-rpc.com/', 'https://polygon.publicnode.com'],
+    AVALANCHE: ['https://api.avax.network/ext/bc/C/rpc', 'https://avalanche-c-chain-rpc.publicnode.com'],
+    ARBITRUM:  ['https://arb1.arbitrum.io/rpc', 'https://arbitrum-one-rpc.publicnode.com'],
+    OPTIMISM:  ['https://mainnet.optimism.io', 'https://optimism-rpc.publicnode.com'],
+    BASE:      ['https://mainnet.base.org', 'https://base-rpc.publicnode.com'],
   };
 
   // Token registry — chain key matches RPCS / CHAIN_IDS
@@ -35,8 +35,13 @@ const EVMChains = (() => {
     USDC_BASE:   { chain: 'BASE',      addr: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', dec: 6  },
   };
 
+  // Rollups (Optimism, Base, Arbitrum) charge an L1 data fee on top of L2 gas.
+  // We track these so callers can apply a wider safety buffer.
+  const IS_ROLLUP = { ARBITRUM: true, OPTIMISM: true, BASE: true };
+
   async function rpc(chainKey, method, params) {
     const urls = RPCS[chainKey];
+    let lastErr;
     for (const url of urls) {
       try {
         const res = await fetch(url, {
@@ -45,13 +50,22 @@ const EVMChains = (() => {
           signal: AbortSignal.timeout(8000),
         });
         const j = await res.json();
-        if (j.error) throw new Error(j.error.message || 'RPC error');
+        if (j.error) {
+          lastErr = new Error(j.error.message || 'RPC error');
+          // Retry on rate limit / server error so a single throttled endpoint doesn't kill the call
+          const msg = (j.error.message || '').toLowerCase();
+          if (msg.includes('rate') || msg.includes('limit') || msg.includes('throttle') ||
+              msg.includes('timeout') || msg.includes('busy')) continue;
+          throw lastErr;
+        }
         return j.result;
       } catch(e) {
-        if (!(e instanceof TypeError) && e.name !== 'AbortError') throw e;
+        lastErr = e;
+        // Network-level errors fall through to next endpoint; programmer errors do not.
+        if (!(e instanceof TypeError) && e.name !== 'AbortError' && !/RPC error/i.test(e.message)) throw e;
       }
     }
-    throw new Error(`Network error: cannot reach ${chainKey} RPC`);
+    throw lastErr || new Error(`Network error: cannot reach ${chainKey} RPC`);
   }
 
   async function deriveAddress(mnemonic) {
@@ -81,9 +95,20 @@ const EVMChains = (() => {
   async function estimateFee(chainKey, isToken = false) {
     const gasPriceHex = await rpc(chainKey, 'eth_gasPrice', []);
     const gasPrice = BigInt(gasPriceHex);
-    const gasLimit = isToken ? 65000n : 21000n;
-    const symbols = { BSC: 'BNB', POLYGON: 'POL', AVALANCHE: 'AVAX', ARBITRUM: 'ETH', OPTIMISM: 'ETH', BASE: 'ETH' };
-    return { fee: parseFloat(ethers.formatEther(gasPrice * gasLimit)).toFixed(6), symbol: symbols[chainKey] || 'ETH' };
+    const baseGasLimit = isToken ? 100000n : 21000n;
+    // On rollups, eth_gasPrice covers only L2 execution. The L1 data fee can equal or
+    // exceed the L2 fee, so we use a much higher gas-equivalent for the displayed fee.
+    // Callers should also apply at least a 1.5x buffer when validating balance.
+    const gasLimit = IS_ROLLUP[chainKey] ? baseGasLimit * 3n : baseGasLimit;
+    const symbols  = { BSC: 'BNB', POLYGON: 'POL', AVALANCHE: 'AVAX', ARBITRUM: 'ETH', OPTIMISM: 'ETH', BASE: 'ETH' };
+    const gweiVal  = parseFloat(ethers.formatUnits(gasPrice, 'gwei'));
+    const gwei     = gweiVal < 1 ? gweiVal.toFixed(3) : gweiVal < 100 ? gweiVal.toFixed(1) : gweiVal.toFixed(0);
+    return {
+      fee: parseFloat(ethers.formatEther(gasPrice * gasLimit)).toFixed(6),
+      symbol: symbols[chainKey] || 'ETH',
+      gwei,
+      isRollup: !!IS_ROLLUP[chainKey],
+    };
   }
 
   async function sendNative(mnemonic, chainKey, to, amt) {
