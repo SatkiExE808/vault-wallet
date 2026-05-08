@@ -198,6 +198,14 @@ body {
   text-transform: uppercase;
   color: var(--text2);
   padding: 6px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.network-header .reorder-controls {
+  flex-direction: row;
+  gap: 6px;
 }
 .network-card {
   background: var(--surface);

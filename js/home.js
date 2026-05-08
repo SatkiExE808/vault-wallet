@@ -4,38 +4,48 @@
 (() => {
   const $ = id => document.getElementById(id);
 
-  // ── Custom coin order (saved per-user) ────────────────────
-  const ORDER_KEY = 'coin_order_v1';
-  function loadOrder() {
+  // ── Custom category order (saved per-user) ────────────────
+  const ORDER_KEY = 'category_order_v1';
+  function loadCatOrder() {
     try { return JSON.parse(localStorage.getItem(ORDER_KEY) || '[]'); } catch { return []; }
   }
-  function saveOrder(order) { localStorage.setItem(ORDER_KEY, JSON.stringify(order)); }
+  function saveCatOrder(order) { localStorage.setItem(ORDER_KEY, JSON.stringify(order)); }
+
+  // Reorder coins so categories appear in saved order; coins within a category keep registry order
   function applyOrder(coins) {
-    const order = loadOrder();
-    if (!order.length) return coins;
-    // Sort by saved position, unsaved coins go to end in their original order
-    const indexOf = id => { const i = order.indexOf(id); return i < 0 ? 9999 : i; };
-    return [...coins].sort((a, b) => indexOf(a.id) - indexOf(b.id));
+    const cats = [...new Set(coins.map(c => c.category))];
+    const saved = loadCatOrder();
+    const ordered = [...saved.filter(c => cats.includes(c)), ...cats.filter(c => !saved.includes(c))];
+    return [...coins].sort((a, b) => ordered.indexOf(a.category) - ordered.indexOf(b.category));
   }
-  function moveCoin(coinId, direction) {
+
+  // Move a whole category up/down in the global order
+  function moveCategory(cat, direction) {
     const active = (typeof getActiveCoins === 'function') ? getActiveCoins() : [];
     const sorted = applyOrder(active);
-    // Reorder within the same category only
-    const coin = sorted.find(c => c.id === coinId);
-    if (!coin) return;
-    const sameCat = sorted.filter(c => c.category === coin.category);
-    const idx = sameCat.findIndex(c => c.id === coinId);
-    const swapWith = direction === 'up' ? sameCat[idx - 1] : sameCat[idx + 1];
-    if (!swapWith) return;
-    // Build new full-coin order from sorted, swapping these two
-    const newOrder = sorted.map(c => c.id);
-    const i1 = newOrder.indexOf(coinId);
-    const i2 = newOrder.indexOf(swapWith.id);
-    [newOrder[i1], newOrder[i2]] = [newOrder[i2], newOrder[i1]];
-    saveOrder(newOrder);
+    const cats = [...new Set(sorted.map(c => c.category))];
+    const idx = cats.indexOf(cat);
+    if (idx < 0) return;
+    const swap = direction === 'up' ? idx - 1 : idx + 1;
+    if (swap < 0 || swap >= cats.length) return;
+    [cats[idx], cats[swap]] = [cats[swap], cats[idx]];
+    saveCatOrder(cats);
     updateHome();
   }
-  window.moveCoin = moveCoin;
+  window.moveCategory = moveCategory;
+
+  // Bring a category to the top — used by wallet picker tap
+  function bringCategoryToTop(cat) {
+    const active = (typeof getActiveCoins === 'function') ? getActiveCoins() : [];
+    const sorted = applyOrder(active);
+    const cats = [...new Set(sorted.map(c => c.category))];
+    const idx = cats.indexOf(cat);
+    if (idx < 1) return;  // already at top or not found
+    cats.splice(idx, 1);
+    cats.unshift(cat);
+    saveCatOrder(cats);
+    updateHome();
+  }
 
   // ── View routing ──────────────────────────────────────────
   function showView(name) {
@@ -62,7 +72,7 @@
   }
   window.toggleEditMode = toggleEditMode;
 
-  // ── Home asset list (grouped by network, reorderable) ─────
+  // ── Home asset list (categories reorderable in Edit mode) ─
   function renderAssetList() {
     const list = $('asset-list');
     if (!list) return;
@@ -74,22 +84,24 @@
     const active = applyOrder(activeRaw);
     const cats = [...new Set(active.map(c => c.category))];
     let html = '';
-    for (const cat of cats) {
+    cats.forEach((cat, catIdx) => {
       const group = active.filter(c => c.category === cat);
+      const isFirstCat = catIdx === 0, isLastCat = catIdx === cats.length - 1;
       html += `<div class="network-group">`;
-      html += `<div class="network-header">${cat}</div>`;
+      html += `<div class="network-header">
+        <span>${cat}</span>
+        ${editMode ? `
+          <div class="reorder-controls">
+            <button class="reorder-btn" data-move="up"   data-cat="${cat}" ${isFirstCat ? 'disabled' : ''}>▲</button>
+            <button class="reorder-btn" data-move="down" data-cat="${cat}" ${isLastCat ? 'disabled' : ''}>▼</button>
+          </div>` : ''}
+      </div>`;
       html += `<div class="network-card">`;
-      html += group.map((coin, idx) => {
+      html += group.map(coin => {
         const bal = state.balances[coin.id] ?? '…';
         const usd = formatUSD(bal, state.prices[coin.id]) || '';
         const badge = coin.networkLabel
           ? `<span class="network-badge ${coin.networkClass}">${coin.networkLabel}</span>` : '';
-        const isFirst = idx === 0, isLast = idx === group.length - 1;
-        const reorderControls = editMode ? `
-            <div class="reorder-controls">
-              <button class="reorder-btn" data-move="up"   data-coin="${coin.id}" ${isFirst ? 'disabled' : ''}>▲</button>
-              <button class="reorder-btn" data-move="down" data-coin="${coin.id}" ${isLast ? 'disabled' : ''}>▼</button>
-            </div>` : '';
         return `
           <div class="asset-item" data-coin="${coin.id}">
             <div class="asset-icon">
@@ -99,26 +111,24 @@
               <div class="asset-name">${coin.name} ${badge}</div>
               <div class="asset-symbol">${coin.symbol}</div>
             </div>
-            ${editMode ? reorderControls : `
             <div class="asset-right">
               <div class="asset-bal">${bal}</div>
               <div class="asset-usd">${usd}</div>
-            </div>`}
+            </div>
           </div>`;
       }).join('');
       html += `</div></div>`;
-    }
+    });
     list.innerHTML = html;
 
-    if (editMode) {
-      list.querySelectorAll('.reorder-btn').forEach(btn => {
-        btn.onclick = e => {
-          e.stopPropagation();
-          if (btn.disabled) return;
-          moveCoin(btn.dataset.coin, btn.dataset.move);
-        };
-      });
-    } else {
+    list.querySelectorAll('.reorder-btn[data-cat]').forEach(btn => {
+      btn.onclick = e => {
+        e.stopPropagation();
+        if (btn.disabled) return;
+        moveCategory(btn.dataset.cat, btn.dataset.move);
+      };
+    });
+    if (!editMode) {
       list.querySelectorAll('.asset-item').forEach(el => {
         el.onclick = () => {
           selectCoin(el.dataset.coin);
@@ -244,19 +254,18 @@
     }
     list.innerHTML = html;
 
-    // Tapping a coin updates the QR display at top, then scrolls back up so it's visible
+    // Tapping a coin updates the QR display at top + brings its category to the top of the picker
     list.querySelectorAll('.asset-item').forEach(el => {
       el.onclick = () => {
-        renderWalletDisplay(el.dataset.coin);
-        // Scroll to top — try every plausible scrollable element so it works
-        // in both browser PWA and Capacitor WebView
+        const coinId = el.dataset.coin;
+        const active = (typeof getActiveCoins === 'function') ? getActiveCoins() : [];
+        const coin = active.find(c => c.id === coinId);
+        renderWalletDisplay(coinId);
+        if (coin) bringCategoryToTop(coin.category);  // re-renders both lists
+        // Scroll to top — covers both browser PWA and Capacitor WebView
         try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { window.scrollTo(0, 0); }
         try { document.documentElement.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
         if (document.body) document.body.scrollTop = 0;
-        const target = $('wallet-display');
-        if (target?.scrollIntoView) {
-          requestAnimationFrame(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-        }
       };
     });
 
