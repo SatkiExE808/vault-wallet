@@ -67,6 +67,59 @@
       <div style="height:24px"></div>
     </div>
 
+    <!-- ── WALLET VIEW (coin picker) ───────────────────────── -->
+    <div class="view" id="wallet-view">
+      <div class="topbar">
+        <div class="topbar-title"><h1>My Wallets</h1></div>
+        <button class="icon-btn" id="wallet-refresh" aria-label="Refresh">↻</button>
+      </div>
+      <div class="section-h"><h2>Choose a wallet</h2></div>
+      <div class="asset-list" id="wallet-asset-list"></div>
+      <div style="height:24px"></div>
+    </div>
+
+    <!-- ── SETTINGS VIEW ───────────────────────────────────── -->
+    <div class="view" id="settings-view">
+      <div class="topbar">
+        <div class="topbar-title"><h1>Settings</h1></div>
+      </div>
+      <div style="padding:0 12px;display:flex;flex-direction:column;gap:8px">
+        <div class="card" style="padding:0">
+          <button class="settings-menu-item" id="menu-show-seed">
+            <span class="menu-icon">🔑</span>
+            <span class="menu-label">Show Recovery Phrase</span>
+            <span class="menu-arrow">›</span>
+          </button>
+          <button class="settings-menu-item" id="menu-change-pwd">
+            <span class="menu-icon">🔒</span>
+            <span class="menu-label">Change Password</span>
+            <span class="menu-arrow">›</span>
+          </button>
+          <button class="settings-menu-item" id="menu-biometric">
+            <span class="menu-icon">👆</span>
+            <span class="menu-label">Enable Face ID / Biometric</span>
+            <span class="menu-arrow">›</span>
+          </button>
+          <button class="settings-menu-item" id="menu-manage-assets">
+            <span class="menu-icon">⊞</span>
+            <span class="menu-label">Manage Assets</span>
+            <span class="menu-arrow">›</span>
+          </button>
+        </div>
+        <div class="card" style="padding:0">
+          <button class="settings-menu-item" id="menu-lock-wallet">
+            <span class="menu-icon">🔓</span>
+            <span class="menu-label">Lock Wallet</span>
+            <span class="menu-arrow">›</span>
+          </button>
+        </div>
+        <p style="text-align:center;color:var(--text3);font-size:12px;margin:16px 0 8px">
+          Vault — Self-custodial · v1.0
+        </p>
+      </div>
+      <div style="height:24px"></div>
+    </div>
+
     <!-- ── COIN DETAIL VIEW ────────────────────────────────── -->
     <div class="view" id="main">
       <div class="topbar">
@@ -143,25 +196,24 @@
       </div>
     </div>
 
-    <!-- ── BOTTOM NAV ──────────────────────────────────────── -->
-    <nav id="bottom-nav">
+    <!-- ── BOTTOM NAV (3 tabs: Home / Wallet / Settings) ───── -->
+    <nav id="bottom-nav" class="nav-3">
       <button class="nav-item active" data-nav="home" aria-label="Home">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         <span>Home</span>
       </button>
-      <button class="nav-item" data-nav="wallet" aria-label="Wallet">
+      <button class="nav-item" data-nav="wallet" aria-label="Wallets">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
-        <span>Wallet</span>
+        <span>Wallets</span>
       </button>
-      <button class="nav-item" data-nav="history" aria-label="History">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        <span>Activity</span>
-      </button>
-      <button class="nav-item" data-nav="settings" aria-label="Settings" id="settings-btn">
+      <button class="nav-item" data-nav="settings" aria-label="Settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         <span>Settings</span>
       </button>
     </nav>
+
+    <!-- Hidden settings button kept for app.js compatibility -->
+    <button id="settings-btn" style="display:none"></button>
 
     <!-- Hidden lock button (still wired in app.js) -->
     <button id="lock-btn" style="display:none"></button>
@@ -217,6 +269,7 @@
   <!-- App -->
   <script src="js/app.js"></script>
   <script src="js/home.js"></script>
+  <script src="js/settings.js"></script>
 
   <!-- PWA service worker -->
   <script>

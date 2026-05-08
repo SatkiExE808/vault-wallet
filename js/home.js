@@ -7,10 +7,14 @@
   // ── View routing ──────────────────────────────────────────
   function showView(name) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    if (name === 'home')  $('home-view').classList.add('active');
-    if (name === 'coin')  $('main').classList.add('active');
+    if (name === 'home')     $('home-view').classList.add('active');
+    if (name === 'wallet')   $('wallet-view').classList.add('active');
+    if (name === 'coin')     $('main').classList.add('active');
+    if (name === 'settings') $('settings-view').classList.add('active');
+    // Map view → bottom nav highlight
+    const navMap = { home: 'home', wallet: 'wallet', coin: 'wallet', settings: 'settings' };
     document.querySelectorAll('.nav-item').forEach(n => {
-      n.classList.toggle('active', n.dataset.nav === (name === 'coin' ? 'wallet' : name));
+      n.classList.toggle('active', n.dataset.nav === navMap[name]);
     });
   }
   window.showView = showView;
@@ -71,8 +75,46 @@
       : '$—';
   }
 
+  // Render the wallet-view list (same data, different container)
+  function renderWalletList() {
+    const list = $('wallet-asset-list');
+    if (!list) return;
+    const active = (typeof getActiveCoins === 'function') ? getActiveCoins() : [];
+    if (!active.length) {
+      list.innerHTML = `<p style="text-align:center;color:var(--text2);padding:24px">No wallets enabled. Tap Settings → Manage Assets.</p>`;
+      return;
+    }
+    list.innerHTML = active.map(coin => {
+      const bal = state.balances[coin.id] ?? '…';
+      const usd = formatUSD(bal, state.prices[coin.id]) || '';
+      const badge = coin.networkLabel
+        ? `<span class="network-badge ${coin.networkClass}">${coin.networkLabel}</span>` : '';
+      return `
+        <div class="asset-item" data-coin="${coin.id}">
+          <div class="asset-icon">
+            <img src="${coin.icon}" alt="" onerror="this.style.display='none'">
+          </div>
+          <div class="asset-meta">
+            <div class="asset-name">${coin.name} ${badge}</div>
+            <div class="asset-symbol">${coin.symbol}</div>
+          </div>
+          <div class="asset-right">
+            <div class="asset-bal">${bal}</div>
+            <div class="asset-usd">${usd}</div>
+          </div>
+        </div>`;
+    }).join('');
+    list.querySelectorAll('.asset-item').forEach(el => {
+      el.onclick = () => {
+        selectCoin(el.dataset.coin);
+        showView('coin');
+      };
+    });
+  }
+
   function updateHome() {
     renderAssetList();
+    renderWalletList();
     updateTotalBalance();
   }
   window.updateHome = updateHome;
@@ -115,33 +157,21 @@
 
   // ── Wire UI events ────────────────────────────────────────
   function wireEvents() {
-    // Bottom nav
+    // Bottom nav (Home / Wallets / Settings)
     document.querySelectorAll('.nav-item').forEach(btn => {
       btn.onclick = () => {
         const target = btn.dataset.nav;
         if (target === 'home')     showView('home');
-        else if (target === 'wallet') {
-          // jump to currently active coin (first if none)
-          const first = (typeof getActiveCoins === 'function') ? getActiveCoins()[0] : null;
-          if (state.active || first) {
-            if (!state.active && first) selectCoin(first.id);
-            showView('coin');
-          }
-        }
-        else if (target === 'history') {
-          // open history tab on currently active coin
-          const first = (typeof getActiveCoins === 'function') ? getActiveCoins()[0] : null;
-          if (!state.active && first) selectCoin(first.id);
-          showView('coin');
-          document.querySelector('.tab[data-tab="history"]')?.click();
-        }
+        else if (target === 'wallet')   showView('wallet');
         else if (target === 'settings') {
-          $('settings-btn')?.click();
-          // click triggers app.js settings handler; keep nav active state on home
-          showView('home');
+          showView('settings');
+          window.renderSettingsTab?.();
         }
       };
     });
+
+    // Wallet view refresh button
+    $('wallet-refresh')?.addEventListener('click', () => $('refresh-btn')?.click());
 
     // Back button on coin view
     $('back-btn').onclick = () => showView('home');

@@ -682,6 +682,7 @@ async function completeSetup(mnemonic, restoreHeight, password) {
 
 function showUnlock() {
   const box = document.getElementById('setup-box');
+  const bioEnabled = window.biometricEnabled?.();
   box.innerHTML = `
     <h1>Unlock Wallet</h1>
     <p>Enter your password to access your wallet.</p>
@@ -691,6 +692,7 @@ function showUnlock() {
     </div>
     <p id="unlock-err" class="text-red text-sm" style="display:none;margin-bottom:12px">Incorrect password. Try again.</p>
     <button class="btn btn-primary" id="btn-unlock" style="width:100%;padding:14px">Unlock</button>
+    ${bioEnabled ? `<button class="btn btn-outline" id="btn-biometric" style="width:100%;margin-top:10px;padding:14px">👆 Unlock with Face ID / Biometric</button>` : ''}
     <button class="btn btn-outline btn-sm" id="btn-forgot" style="width:100%;margin-top:10px">Forgot password / Remove wallet</button>`;
   const doUnlock = async () => {
     const pwd = document.getElementById('unlock-pwd').value;
@@ -708,6 +710,21 @@ function showUnlock() {
   };
   document.getElementById('unlock-pwd').addEventListener('keydown', e => { if (e.key === 'Enter') doUnlock(); });
   document.getElementById('btn-unlock').onclick = doUnlock;
+  document.getElementById('btn-biometric')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-biometric');
+    btn.disabled = true; btn.textContent = 'Verifying…';
+    try {
+      const pwd = await window.unlockWithBiometric();
+      const mnemonic = await decryptMnemonic(localStorage.getItem('wallet_encrypted'), pwd);
+      state.mnemonic = mnemonic;
+      await loadWallet();
+    } catch (e) {
+      btn.disabled = false; btn.textContent = '👆 Unlock with Face ID / Biometric';
+      const err = document.getElementById('unlock-err');
+      err.textContent = 'Biometric failed: ' + (e.message || e.name);
+      err.style.display = 'block';
+    }
+  });
   document.getElementById('btn-forgot').onclick = () => {
     if (confirm('Remove wallet from this device? Make absolutely sure you have your recovery phrase backed up.')) {
       localStorage.clear(); location.reload();
