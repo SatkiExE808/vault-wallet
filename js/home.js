@@ -4,6 +4,39 @@
 (() => {
   const $ = id => document.getElementById(id);
 
+  // ── Custom coin order (saved per-user) ────────────────────
+  const ORDER_KEY = 'coin_order_v1';
+  function loadOrder() {
+    try { return JSON.parse(localStorage.getItem(ORDER_KEY) || '[]'); } catch { return []; }
+  }
+  function saveOrder(order) { localStorage.setItem(ORDER_KEY, JSON.stringify(order)); }
+  function applyOrder(coins) {
+    const order = loadOrder();
+    if (!order.length) return coins;
+    // Sort by saved position, unsaved coins go to end in their original order
+    const indexOf = id => { const i = order.indexOf(id); return i < 0 ? 9999 : i; };
+    return [...coins].sort((a, b) => indexOf(a.id) - indexOf(b.id));
+  }
+  function moveCoin(coinId, direction) {
+    const active = (typeof getActiveCoins === 'function') ? getActiveCoins() : [];
+    const sorted = applyOrder(active);
+    // Reorder within the same category only
+    const coin = sorted.find(c => c.id === coinId);
+    if (!coin) return;
+    const sameCat = sorted.filter(c => c.category === coin.category);
+    const idx = sameCat.findIndex(c => c.id === coinId);
+    const swapWith = direction === 'up' ? sameCat[idx - 1] : sameCat[idx + 1];
+    if (!swapWith) return;
+    // Build new full-coin order from sorted, swapping these two
+    const newOrder = sorted.map(c => c.id);
+    const i1 = newOrder.indexOf(coinId);
+    const i2 = newOrder.indexOf(swapWith.id);
+    [newOrder[i1], newOrder[i2]] = [newOrder[i2], newOrder[i1]];
+    saveOrder(newOrder);
+    updateHome();
+  }
+  window.moveCoin = moveCoin;
+
   // ── View routing ──────────────────────────────────────────
   function showView(name) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -19,15 +52,26 @@
   }
   window.showView = showView;
 
-  // ── Home asset list (grouped by network) ──────────────────
+  // Reorder mode state — toggled by Edit button in home view
+  let editMode = false;
+  function toggleEditMode() {
+    editMode = !editMode;
+    const btn = $('home-edit-btn');
+    if (btn) btn.textContent = editMode ? 'Done' : 'Edit';
+    renderAssetList();
+  }
+  window.toggleEditMode = toggleEditMode;
+
+  // ── Home asset list (grouped by network, reorderable) ─────
   function renderAssetList() {
     const list = $('asset-list');
     if (!list) return;
-    const active = (typeof getActiveCoins === 'function') ? getActiveCoins() : [];
-    if (!active.length) {
+    const activeRaw = (typeof getActiveCoins === 'function') ? getActiveCoins() : [];
+    if (!activeRaw.length) {
       list.innerHTML = `<p style="text-align:center;color:var(--text2);padding:24px">No assets enabled. Tap Manage to add some.</p>`;
       return;
     }
+    const active = applyOrder(activeRaw);
     const cats = [...new Set(active.map(c => c.category))];
     let html = '';
     for (const cat of cats) {
@@ -35,11 +79,17 @@
       html += `<div class="network-group">`;
       html += `<div class="network-header">${cat}</div>`;
       html += `<div class="network-card">`;
-      html += group.map(coin => {
+      html += group.map((coin, idx) => {
         const bal = state.balances[coin.id] ?? '…';
         const usd = formatUSD(bal, state.prices[coin.id]) || '';
         const badge = coin.networkLabel
           ? `<span class="network-badge ${coin.networkClass}">${coin.networkLabel}</span>` : '';
+        const isFirst = idx === 0, isLast = idx === group.length - 1;
+        const reorderControls = editMode ? `
+            <div class="reorder-controls">
+              <button class="reorder-btn" data-move="up"   data-coin="${coin.id}" ${isFirst ? 'disabled' : ''}>▲</button>
+              <button class="reorder-btn" data-move="down" data-coin="${coin.id}" ${isLast ? 'disabled' : ''}>▼</button>
+            </div>` : '';
         return `
           <div class="asset-item" data-coin="${coin.id}">
             <div class="asset-icon">
@@ -49,21 +99,33 @@
               <div class="asset-name">${coin.name} ${badge}</div>
               <div class="asset-symbol">${coin.symbol}</div>
             </div>
+            ${editMode ? reorderControls : `
             <div class="asset-right">
               <div class="asset-bal">${bal}</div>
               <div class="asset-usd">${usd}</div>
-            </div>
+            </div>`}
           </div>`;
       }).join('');
       html += `</div></div>`;
     }
     list.innerHTML = html;
-    list.querySelectorAll('.asset-item').forEach(el => {
-      el.onclick = () => {
-        selectCoin(el.dataset.coin);
-        showView('coin');
-      };
-    });
+
+    if (editMode) {
+      list.querySelectorAll('.reorder-btn').forEach(btn => {
+        btn.onclick = e => {
+          e.stopPropagation();
+          if (btn.disabled) return;
+          moveCoin(btn.dataset.coin, btn.dataset.move);
+        };
+      });
+    } else {
+      list.querySelectorAll('.asset-item').forEach(el => {
+        el.onclick = () => {
+          selectCoin(el.dataset.coin);
+          showView('coin');
+        };
+      });
+    }
   }
 
   function updateTotalBalance() {
@@ -141,15 +203,16 @@
     });
   }
 
-  // Bottom picker list (grouped by network)
+  // Bottom picker list (grouped by network, follows custom order)
   function renderWalletList() {
     const list = $('wallet-asset-list');
     if (!list) return;
-    const active = (typeof getActiveCoins === 'function') ? getActiveCoins() : [];
-    if (!active.length) {
+    const activeRaw = (typeof getActiveCoins === 'function') ? getActiveCoins() : [];
+    if (!activeRaw.length) {
       list.innerHTML = `<p style="text-align:center;color:var(--text2);padding:24px">No wallets enabled. Tap Settings → Manage Assets.</p>`;
       return;
     }
+    const active = applyOrder(activeRaw);
     const cats = [...new Set(active.map(c => c.category))];
     let html = '';
     for (const cat of cats) {
@@ -181,9 +244,18 @@
     }
     list.innerHTML = html;
 
-    // Tapping a coin updates the QR display at the top (no navigation)
+    // Tapping a coin updates the QR display at top, then scrolls back up so it's visible
     list.querySelectorAll('.asset-item').forEach(el => {
-      el.onclick = () => renderWalletDisplay(el.dataset.coin);
+      el.onclick = () => {
+        renderWalletDisplay(el.dataset.coin);
+        // Scroll to top of wallet display
+        const target = $('wallet-display');
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      };
     });
 
     // Initialise top display

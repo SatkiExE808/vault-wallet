@@ -206,6 +206,33 @@ body {
   padding-left: 7px;
 }
 
+/* Reorder controls (shown in home Edit mode) */
+.reorder-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.reorder-btn {
+  width: 32px; height: 26px;
+  border-radius: 6px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  transition: background 0.1s, transform 0.1s;
+}
+.reorder-btn:active:not(:disabled) {
+  transform: scale(0.92);
+  background: var(--accent);
+}
+.reorder-btn:disabled { opacity: 0.3; cursor: default; }
+
 /* ── Wallet view: card with QR per coin ─────────────────────── */
 .wallet-card {
   background: var(--surface);
