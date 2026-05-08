@@ -229,8 +229,25 @@
       };
     }
 
-    // selectCoin should also switch to detail view (via tap)
-    // (asset-item click handler already calls showView('coin'))
+    // renderCoinList is called by app.js whenever enabled coins change
+    // (Manage Assets toggle). Re-render the new home + wallet views too.
+    if (typeof renderCoinList === 'function') {
+      const orig = renderCoinList;
+      window.renderCoinList = function() {
+        orig.apply(this, arguments);
+        updateHome();
+      };
+    }
+
+    // updateSidebarBal is called whenever a single coin's balance changes.
+    // Update home/wallet views so the new tile appears even before next full refresh.
+    if (typeof updateSidebarBal === 'function') {
+      const orig = updateSidebarBal;
+      window.updateSidebarBal = function() {
+        orig.apply(this, arguments);
+        updateHome();
+      };
+    }
   }
 
   // ── Wire UI events ────────────────────────────────────────
