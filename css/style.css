@@ -26,7 +26,11 @@
   --sa-bot: env(safe-area-inset-bottom, 0);
 }
 
-html, body { height: 100%; overscroll-behavior: none; }
+html, body {
+  height: 100%;
+  overflow: hidden;        /* page itself never scrolls — only inner lists */
+  overscroll-behavior: none;
+}
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
@@ -36,17 +40,43 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* ── App shell ──────────────────────────────────────────────── */
+/* ── App shell — full viewport flex container ────────────── */
 #app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
   padding-bottom: calc(54px + var(--sa-bot));   /* room for bottom nav */
+  box-sizing: border-box;
 }
 
-.view { display: none; flex-direction: column; flex: 1; }
+.view {
+  display: none;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;            /* lets children scroll instead of overflowing */
+}
 .view.active { display: flex; animation: fadeIn 0.2s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* Sticky areas inside views */
+.view .topbar,
+.view .balance-hero,
+.view .qa-row,
+.view .section-h,
+.view #wallet-display,
+.view #content {
+  flex-shrink: 0;
+}
+
+/* Scrollable list areas inside views */
+.view .scroll-area,
+#asset-list,
+#wallet-asset-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
 
 /* ── Top bar ────────────────────────────────────────────────── */
 .topbar {
@@ -356,10 +386,15 @@ body {
 #main.active { display: flex; }
 #sidebar { display: none; }   /* hide old sidebar, replaced by bottom nav */
 
+/* #content scrolls within the coin detail view (so topbar stays sticky) */
 #content {
   padding: 0 12px 12px;
   display: flex; flex-direction: column;
   gap: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .card {
