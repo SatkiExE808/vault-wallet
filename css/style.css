@@ -177,7 +177,17 @@ body {
   padding: 2px 16px 6px;
 }
 .section-h h2 { font-size: 14px; font-weight: 700; letter-spacing: -0.1px; }
-.section-h a { font-size: 12px; color: var(--accent); cursor: pointer; }
+.section-h a, .section-h .link-btn {
+  font-size: 13px;
+  color: var(--accent);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  font-weight: 600;
+  font-family: inherit;
+}
+.section-h .link-btn:active { opacity: 0.6; }
 
 /* ── Network groups ─────────────────────────────────────────── */
 .network-group { margin: 0 12px 14px; }

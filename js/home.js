@@ -248,12 +248,14 @@
     list.querySelectorAll('.asset-item').forEach(el => {
       el.onclick = () => {
         renderWalletDisplay(el.dataset.coin);
-        // Scroll to top of wallet display
+        // Scroll to top — try every plausible scrollable element so it works
+        // in both browser PWA and Capacitor WebView
+        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { window.scrollTo(0, 0); }
+        try { document.documentElement.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+        if (document.body) document.body.scrollTop = 0;
         const target = $('wallet-display');
-        if (target) {
-          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        } else {
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (target?.scrollIntoView) {
+          requestAnimationFrame(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }));
         }
       };
     });
@@ -339,6 +341,9 @@
 
     // Wallet view refresh button
     $('wallet-refresh')?.addEventListener('click', () => $('refresh-btn')?.click());
+
+    // Home view: Edit/Done toggle (reorder mode)
+    $('home-edit-btn')?.addEventListener('click', () => toggleEditMode());
 
     // Back button on coin view
     $('back-btn').onclick = () => showView('home');
