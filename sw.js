@@ -1,9 +1,10 @@
-const CACHE = 'vault-v15';
+const CACHE = 'vault-v16';
 const LOCAL_FILES = [
   './index.html',
   './manifest.json',
   './css/style.css',
   './js/app.js',
+  './js/home.js',
   './js/coins/utxo.js',
   './js/coins/bitcoin.js',
   './js/coins/litecoin.js',

@@ -753,8 +753,7 @@ async function loadWallet() {
   }));
 
   document.getElementById('setup-screen').style.display = 'none';
-  document.getElementById('sidebar').style.display = 'flex';
-  document.getElementById('main').style.display = 'flex';
+  document.getElementById('app').style.display = 'flex';
 
   renderCoinList();
   const first = getActiveCoins()[0];
@@ -1196,8 +1195,7 @@ document.getElementById('lock-btn').onclick = () => {
   clearFeeTimer();
   state.mnemonic = null;
   Object.assign(state, { addresses: {}, balances: {}, extras: {}, active: 'BTC' });
-  document.getElementById('sidebar').style.display = 'none';
-  document.getElementById('main').style.display = 'none';
+  document.getElementById('app').style.display = 'none';
   document.getElementById('setup-screen').style.display = 'flex';
   showUnlock();
 };
