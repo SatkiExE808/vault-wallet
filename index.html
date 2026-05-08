@@ -76,6 +76,7 @@
       </div>
 
       <div id="content">
+        <!-- Balance + QR + Address: always visible at top -->
         <div class="card balance-card">
           <div class="coin-badge">
             <span id="bal-icon"></span>
@@ -84,33 +85,32 @@
           </div>
           <div class="amount" id="bal-amount">—</div>
           <div id="bal-usd" style="font-size:14px;color:var(--text2);margin-top:2px;min-height:18px"></div>
+
+          <div class="qr-container"><div id="qr-output"></div></div>
+          <div class="address-box">
+            <code id="address-display">—</code>
+            <button class="btn btn-outline btn-sm" id="copy-btn">Copy</button>
+          </div>
+
           <div class="balance-actions">
-            <button class="btn btn-primary btn-sm" id="receive-tab-btn">Receive</button>
-            <button class="btn btn-outline btn-sm" id="send-tab-btn">Send</button>
+            <button class="btn btn-primary" id="send-tab-btn">↑ Send</button>
+            <button class="btn btn-outline" id="receive-tab-btn">⊟ History</button>
           </div>
         </div>
 
-        <div class="card">
+        <!-- Tabs (Send / History only — Receive is always visible above) -->
+        <div class="card" id="action-card" style="display:none">
           <div class="tabs">
-            <div class="tab active" data-tab="receive">Receive</div>
-            <div class="tab" data-tab="send">Send</div>
+            <div class="tab active" data-tab="send">Send</div>
             <div class="tab" data-tab="history">History</div>
+            <div class="tab" data-tab="close" id="close-action-tab">✕</div>
           </div>
           <hr class="divider">
 
-          <div class="tab-content active" id="tab-receive">
-            <div class="qr-container"><div id="qr-output"></div></div>
-            <div class="address-box">
-              <code id="address-display">—</code>
-              <button class="btn btn-outline btn-sm" id="copy-btn">Copy</button>
-            </div>
-          </div>
+          <!-- Hidden receive tab — kept for app.js compatibility -->
+          <div class="tab-content" id="tab-receive" style="display:none"></div>
 
-          <div class="tab-content" id="tab-history">
-            <div id="history-list" style="padding:4px 0"></div>
-          </div>
-
-          <div class="tab-content" id="tab-send">
+          <div class="tab-content active" id="tab-send">
             <p id="send-unavailable" class="text-muted text-sm" style="display:none;padding:12px 0">
               Sending is not available for this coin.
             </p>
@@ -132,6 +132,10 @@
               </div>
               <button class="btn btn-primary" id="do-send-btn" style="width:100%">Send</button>
             </div>
+          </div>
+
+          <div class="tab-content" id="tab-history">
+            <div id="history-list" style="padding:4px 0"></div>
           </div>
         </div>
 

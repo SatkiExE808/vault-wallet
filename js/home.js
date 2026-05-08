@@ -164,6 +164,44 @@
     };
     $('qa-manage').onclick = () => $('settings-btn')?.click();
 
+    // The action card (Send / History) is hidden by default so the receive view
+    // (balance + QR + address) fits in one screen. Tapping Send or History opens it.
+    function openAction(tab) {
+      const card = $('action-card');
+      if (card) card.style.display = 'block';
+      // Activate target tab
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+      ['send', 'history'].forEach(name => {
+        const el = $('tab-' + name);
+        if (el) el.classList.toggle('active', name === tab);
+      });
+      // Scroll the card into view
+      setTimeout(() => card?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    }
+    function closeAction() {
+      const card = $('action-card');
+      if (card) card.style.display = 'none';
+    }
+    window.openAction = openAction;
+    window.closeAction = closeAction;
+
+    // Override receive-tab-btn (now labeled "History") and send-tab-btn
+    setTimeout(() => {
+      const histBtn = $('receive-tab-btn');
+      if (histBtn) histBtn.onclick = () => openAction('history');
+      const sendBtn = $('send-tab-btn');
+      if (sendBtn) sendBtn.onclick = () => openAction('send');
+    }, 0);
+
+    // Tab clicks (Send / History switch; ✕ closes the card)
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const target = tab.dataset.tab;
+        if (target === 'close') { closeAction(); return; }
+        openAction(target);
+      });
+    });
+
     // Lock from settings sheet
     $('lock-action-btn')?.addEventListener('click', () => {
       $('settings-close-btn')?.click();

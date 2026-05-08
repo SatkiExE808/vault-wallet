@@ -41,7 +41,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  padding-bottom: calc(64px + var(--sa-bot));   /* room for bottom nav */
+  padding-bottom: calc(54px + var(--sa-bot));   /* room for bottom nav */
 }
 
 .view { display: none; flex-direction: column; flex: 1; }
@@ -53,7 +53,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: calc(12px + var(--sa-top)) 16px 12px;
+  padding: calc(8px + var(--sa-top)) 12px 8px;
   background: var(--bg);
   position: sticky;
   top: 0;
@@ -69,7 +69,7 @@ body {
 }
 
 .topbar .icon-btn {
-  width: 40px; height: 40px;
+  width: 36px; height: 36px;
   border-radius: 50%;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -89,14 +89,14 @@ body {
 
 /* ── Home: total balance card ───────────────────────────────── */
 .balance-hero {
-  margin: 8px 16px 20px;
-  padding: 28px 24px;
+  margin: 4px 12px 12px;
+  padding: 18px 20px;
   background:
     radial-gradient(120% 100% at 0% 0%, rgba(249,115,22,0.18), transparent 50%),
     radial-gradient(120% 100% at 100% 100%, rgba(251,146,60,0.10), transparent 50%),
     linear-gradient(180deg, var(--surface), var(--surface2));
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 18px;
   text-align: center;
   position: relative;
   overflow: hidden;
@@ -115,45 +115,45 @@ body {
 }
 
 .balance-hero .label {
-  font-size: 13px;
+  font-size: 11px;
   color: var(--text2);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   font-weight: 600;
 }
 .balance-hero .total {
-  font-size: 40px;
+  font-size: 32px;
   font-weight: 800;
-  letter-spacing: -1.2px;
-  margin: 6px 0 4px;
+  letter-spacing: -1px;
+  margin: 4px 0 2px;
   background: linear-gradient(180deg, #fff, var(--text2));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 .balance-hero .change {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--green);
   font-weight: 600;
-  min-height: 18px;
+  min-height: 14px;
 }
 
 /* ── Quick actions row ──────────────────────────────────────── */
 .qa-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin: 0 16px 24px;
+  gap: 8px;
+  margin: 0 12px 14px;
 }
 .qa-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 14px 8px;
+  gap: 6px;
+  padding: 10px 4px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 14px;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
   font-family: inherit;
@@ -161,23 +161,23 @@ body {
 }
 .qa-btn:active { transform: scale(0.96); background: var(--surface2); }
 .qa-btn .qa-icon {
-  width: 40px; height: 40px;
+  width: 32px; height: 32px;
   border-radius: 50%;
   background: var(--accent-glow);
   color: var(--accent);
   display: flex; align-items: center; justify-content: center;
-  font-size: 18px;
+  font-size: 16px;
 }
-.qa-btn .qa-label { font-size: 13px; font-weight: 600; }
+.qa-btn .qa-label { font-size: 12px; font-weight: 600; }
 .qa-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── Section header ─────────────────────────────────────────── */
 .section-h {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 4px 20px 10px;
+  padding: 2px 16px 6px;
 }
-.section-h h2 { font-size: 15px; font-weight: 700; letter-spacing: -0.1px; }
-.section-h a { font-size: 13px; color: var(--accent); cursor: pointer; }
+.section-h h2 { font-size: 14px; font-weight: 700; letter-spacing: -0.1px; }
+.section-h a { font-size: 12px; color: var(--accent); cursor: pointer; }
 
 /* ── Asset list (home) ──────────────────────────────────────── */
 .asset-list {
@@ -190,54 +190,54 @@ body {
 .asset-item {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 12px;
-  border-radius: 14px;
+  gap: 12px;
+  padding: 10px 10px;
+  border-radius: 12px;
   cursor: pointer;
   transition: background 0.12s;
 }
 .asset-item:active { background: var(--surface); }
 
 .asset-icon {
-  width: 44px; height: 44px;
+  width: 38px; height: 38px;
   border-radius: 50%;
   background: var(--surface2);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
 }
-.asset-icon img { width: 36px; height: 36px; object-fit: contain; }
+.asset-icon img { width: 32px; height: 32px; object-fit: contain; }
 
 .asset-meta { flex: 1; min-width: 0; }
 .asset-name {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 15px; font-weight: 600;
-  margin-bottom: 2px;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 14px; font-weight: 600;
+  margin-bottom: 1px;
 }
 .asset-symbol {
-  font-size: 13px; color: var(--text2);
+  font-size: 12px; color: var(--text2);
   font-variant-numeric: tabular-nums;
 }
 
 .asset-right { text-align: right; flex-shrink: 0; }
-.asset-bal { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.asset-usd { font-size: 12px; color: var(--text2); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.asset-bal { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.asset-usd { font-size: 11px; color: var(--text2); margin-top: 1px; font-variant-numeric: tabular-nums; }
 
 /* ── Coin detail view ──────────────────────────────────────── */
 #main { flex: 1; display: flex; flex-direction: column; }
 #sidebar { display: none; }   /* hide old sidebar, replaced by bottom nav */
 
 #content {
-  padding: 0 16px 20px;
+  padding: 0 12px 12px;
   display: flex; flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px;
+  padding: 14px;
 }
 
 .balance-card {
@@ -245,29 +245,50 @@ body {
     radial-gradient(120% 100% at 0% 0%, rgba(249,115,22,0.18), transparent 60%),
     linear-gradient(180deg, var(--surface), var(--surface2));
   text-align: center;
-  padding: 26px 20px;
-  border-radius: 20px;
+  padding: 14px 14px 14px;
+  border-radius: 18px;
 }
 .balance-card .coin-badge {
-  display: inline-flex; align-items: center; gap: 8px;
+  display: inline-flex; align-items: center; gap: 6px;
   background: var(--surface2); border-radius: 100px;
-  padding: 6px 14px; margin-bottom: 14px;
-  font-size: 13px; font-weight: 600;
+  padding: 4px 12px; margin-bottom: 8px;
+  font-size: 12px; font-weight: 600;
 }
 .balance-card .amount {
-  font-size: 36px; font-weight: 800;
-  letter-spacing: -1px;
+  font-size: 26px; font-weight: 800;
+  letter-spacing: -0.6px;
   font-variant-numeric: tabular-nums;
+  line-height: 1.1;
 }
 .balance-card .amount-usd {
-  font-size: 14px; color: var(--text2); margin-top: 2px;
+  font-size: 13px; color: var(--text2); margin-top: 2px;
 }
+/* QR shown inside balance card — compact size to fit one screen */
+.balance-card .qr-container {
+  margin: 10px 0 8px;
+}
+.balance-card #qr-output canvas,
+.balance-card #qr-output img,
+.balance-card #qr-canvas {
+  width: 140px !important;
+  height: 140px !important;
+  background: #fff;
+  padding: 6px;
+  border-radius: 10px;
+}
+.balance-card .address-box {
+  margin-top: 0;
+  padding: 8px 12px;
+  font-size: 11px;
+}
+.balance-card .address-box code { font-size: 11px; }
 .balance-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 18px;
+  gap: 8px;
+  margin-top: 10px;
 }
+.balance-actions .btn { padding: 10px; font-size: 14px; }
 
 /* ── Buttons ────────────────────────────────────────────────── */
 .btn {
@@ -405,18 +426,18 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 10px 0 8px;
+  padding: 6px 0 5px;
   cursor: pointer;
   color: var(--text3);
   transition: color 0.15s;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   background: none;
   border: none;
   font-family: inherit;
 }
 .nav-item.active { color: var(--accent); }
-.nav-item svg { width: 22px; height: 22px; }
+.nav-item svg { width: 20px; height: 20px; }
 
 /* ── Setup screen ───────────────────────────────────────────── */
 #setup-screen {
