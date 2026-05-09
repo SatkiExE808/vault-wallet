@@ -114,15 +114,17 @@ const AaveEarn = (() => {
   }
 
   // Aave's currentLiquidityRate is the *annualized* rate (APR) in ray (1e27).
-  // The APY accounts for per-second compounding:
-  //   APY = (1 + APR / secondsPerYear) ^ secondsPerYear − 1
-  // Returns a string like "5.42" for the live badge.
+  // APY = (1 + APR / secondsPerYear) ^ secondsPerYear − 1.
+  // Hardcoded sanity caps catch any chain where the rate is encoded
+  // unexpectedly (or where we're reading the wrong slot) — beats showing
+  // "Infinity" or a 6-digit nonsense number to the user.
   function rateToApyPercent(liquidityRate) {
     const SECONDS_PER_YEAR = 31_536_000;
     const apr = Number(liquidityRate) / 1e27;
-    if (!Number.isFinite(apr) || apr < 0) return '0.00';
+    if (!Number.isFinite(apr) || apr <= 0 || apr > 5) return '0.00'; // 500% APR sanity cap
     const apy = ((1 + apr / SECONDS_PER_YEAR) ** SECONDS_PER_YEAR - 1) * 100;
-    return Number.isFinite(apy) ? apy.toFixed(2) : '0.00';
+    if (!Number.isFinite(apy) || apy <= 0 || apy > 200) return '0.00';
+    return apy.toFixed(2);
   }
 
   async function supply(mnemonic, coinId, amount) {

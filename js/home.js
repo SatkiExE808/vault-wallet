@@ -7,9 +7,12 @@
   // Small green pill showing live Aave supply APY for stablecoins.
   // Returns '' when no APY is known for the coin yet.
   function renderApyBadge(coinId) {
-    const apy = state.aaveApy?.[coinId];
-    if (!apy || parseFloat(apy) <= 0) return '';
-    return `<span class="apy-badge" title="Aave supply APY">${apy}%</span>`;
+    const raw = state.aaveApy?.[coinId];
+    const num = parseFloat(raw);
+    // Defense against any stale-cached or mis-decoded rate slipping
+    // through with Infinity / NaN / bogus huge values.
+    if (!raw || !Number.isFinite(num) || num <= 0 || num > 200) return '';
+    return `<span class="apy-badge" title="Aave supply APY">${num.toFixed(2)}%</span>`;
   }
 
   // Render progress pills (incoming/outgoing confirmation status) for a coin.
