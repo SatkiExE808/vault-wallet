@@ -878,6 +878,10 @@ function showImport() {
       <textarea id="import-phrase" rows="4" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;color:var(--text);font-size:14px;resize:none;outline:none;font-family:monospace" placeholder="word1 word2 word3 …" spellcheck="false"></textarea>
     </div>
     <div class="form-group">
+      <label>BIP39 Passphrase / 25th word <span style="color:var(--text2);font-weight:400">(optional — leave blank if you didn't set one)</span></label>
+      <input type="password" id="import-passphrase" placeholder="Your passphrase, or leave empty" autocomplete="off" autocapitalize="off" spellcheck="false">
+    </div>
+    <div class="form-group">
       <label>Monero Restore Height <span style="color:var(--text2);font-weight:400">(leave 0 to scan all blocks)</span></label>
       <input type="number" id="import-height" placeholder="0" min="0">
     </div>
@@ -894,6 +898,7 @@ function showImport() {
     <button class="btn btn-outline btn-sm" id="btn-back" style="width:100%;margin-top:10px">Back</button>`;
   document.getElementById('btn-import-ok').onclick = async () => {
     const phrase = document.getElementById('import-phrase').value.trim().replace(/\s+/g, ' ');
+    const passphrase = document.getElementById('import-passphrase').value;
     const p1 = document.getElementById('import-pwd1').value;
     const p2 = document.getElementById('import-pwd2').value;
     const err = document.getElementById('phrase-err');
@@ -902,12 +907,12 @@ function showImport() {
     if (p1 !== p2) { err.textContent = 'Passwords do not match.'; err.style.display = 'block'; return; }
     err.style.display = 'none';
     const h = document.getElementById('import-height').value.trim();
-    await completeSetup(phrase, h ? parseInt(h) : 0, p1);
+    await completeSetup(phrase, h ? parseInt(h) : 0, p1, passphrase);
   };
   document.getElementById('btn-back').onclick = showSetup;
 }
 
-async function completeSetup(mnemonic, restoreHeight, password) {
+async function completeSetup(mnemonic, restoreHeight, password, passphrase = '') {
   const box = document.getElementById('setup-box');
   box.innerHTML = `<h1>Setting up…</h1><p style="color:var(--text2);margin-top:8px">Encrypting wallet and deriving addresses…</p>`;
   try {
@@ -920,6 +925,15 @@ async function completeSetup(mnemonic, restoreHeight, password) {
     const roundTrip = await decryptMnemonic(stored, password);
     if (roundTrip !== mnemonic) throw new Error('Encrypted wallet failed verification — refusing to discard backup');
     localStorage.removeItem('wallet_mnemonic'); // remove legacy plaintext if any
+    // If a passphrase was supplied (import or new-wallet flow), set the
+    // in-memory passphrase + flag so derivation lands on the right addresses
+    // and future unlocks prompt for it. Empty string = standard wallet.
+    if (passphrase) {
+      state.passphrase = passphrase;
+      setPassphraseEnabled(true);
+    } else {
+      state.passphrase = '';
+    }
     state.mnemonic = mnemonic;
     await loadWallet();
   } catch(e) {
