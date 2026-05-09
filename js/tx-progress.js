@@ -188,7 +188,16 @@ const TxProgress = (() => {
           if (!tx || !tx.hash || tx.status !== 'pending') continue;
           const key = `${coin.id}:${String(tx.hash).toLowerCase()}`;
           if (known.has(key)) continue;
-          track(coin.id, tx.hash, tx.type === 'send' ? 'send' : 'receive', tx.amount);
+          const dir = tx.type === 'send' ? 'send' : 'receive';
+          track(coin.id, tx.hash, dir, tx.amount);
+          // New incoming tx — notify the user via the inbox.
+          if (dir === 'receive' && typeof Inbox !== 'undefined') {
+            Inbox.add({
+              type: 'receive',
+              title: `${coin.symbol} deposit received`,
+              subtitle: `Your funds are now ready to use`,
+            });
+          }
           known.add(key);
           added = true;
         }

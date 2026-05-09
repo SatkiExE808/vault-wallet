@@ -141,6 +141,13 @@ const Staking = (() => {
           ? await SolanaWallet.liquidStakeJupSol(state.mnemonic, amt)
           : await SolanaWallet.liquidUnstakeJupSol(state.mnemonic, amt);
         toast(`Done! TX: ${String(sig).slice(0, 20)}…`);
+        if (typeof Inbox !== 'undefined') Inbox.add({
+          type: 'stake',
+          title: action === 'stake' ? 'JupSOL liquid stake complete' : 'JupSOL unstaked',
+          subtitle: action === 'stake'
+            ? `${amt} SOL → JupSOL · earning ~7% APY`
+            : `${amt} JupSOL → SOL · returned to liquid balance`,
+        });
         close();
         // Solana confirms quickly but Jupiter swap balances take 10-20s
         // to settle. Two refreshes catches both fast and slow cases.
@@ -245,6 +252,11 @@ const Staking = (() => {
       try {
         const sig = await SolanaWallet.stakeSOL(state.mnemonic, validator, amt);
         toast(`Staked! TX: ${sig.slice(0, 20)}…`);
+        if (typeof Inbox !== 'undefined') Inbox.add({
+          type: 'stake',
+          title: 'SOL stake delegated',
+          subtitle: `${amt} SOL delegated · ~3 day activation period`,
+        });
         close();
         setTimeout(refreshBalances, 4000);
       } catch (e) { errDiv.textContent = e.message || 'Stake failed'; btn.disabled = false; btn.textContent = 'Stake'; }
