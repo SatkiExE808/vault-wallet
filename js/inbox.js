@@ -115,9 +115,20 @@ const Inbox = (() => {
   function init() {
     $('inbox-btn')?.addEventListener('click', open);
     $('inbox-back')?.addEventListener('click', () => showView('home'));
-    $('inbox-clear')?.addEventListener('click', () => {
+    $('inbox-clear')?.addEventListener('click', async () => {
       if (load().length === 0) return;
-      if (!confirm('Clear all inbox notifications? This won\'t affect any actual transactions or balances.')) return;
+      const ok = typeof confirmModal === 'function'
+        ? await confirmModal({
+            title: 'Clear all notifications',
+            lines: [
+              ['Items', `${load().length} entries`],
+              ['Note', "This only clears the inbox view — no actual transactions or balances are affected."],
+            ],
+            confirmLabel: 'Clear all',
+            danger: true,
+          })
+        : window.confirm('Clear all inbox notifications?');
+      if (!ok) return;
       clearAll();
     });
     updateBell();
