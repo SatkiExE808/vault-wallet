@@ -90,8 +90,14 @@ const Earn = (() => {
     root.querySelector('#ern-max').onclick = () => {
       const action = actionSeg.getValue();
       const input = root.querySelector('#ern-amount');
-      if (action === 'deposit') input.value = state.balances[coinId] || '0';
-      else                      input.value = info?.depositedFormatted || '0';
+      if (action === 'deposit') {
+        input.value = state.balances[coinId] || '0';
+        return;
+      }
+      // Withdraw Max — refuse if Aave info hasn't loaded so we don't write '0'
+      // and confuse the user into submitting a zero withdraw.
+      if (!info) { toast('Position still loading — try again in a moment'); return; }
+      input.value = info.depositedFormatted;
     };
 
     const errDiv = root.querySelector('#ern-err');

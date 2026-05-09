@@ -30,15 +30,19 @@ const EthereumWallet = (() => {
   };
 
   async function getETHBalance(address) {
-    const hex = await rpcCall('eth_getBalance', [address, 'latest']);
-    return parseFloat(ethers.formatEther(BigInt(hex))).toFixed(6);
+    try {
+      const hex = await rpcCall('eth_getBalance', [address, 'latest']);
+      return parseFloat(ethers.formatEther(BigInt(hex))).toFixed(6);
+    } catch { return '0.000000'; }
   }
 
   async function getTokenBalance(address, token) {
-    const t = TOKENS[token];
-    const data = '0x70a08231' + address.slice(2).padStart(64, '0');
-    const hex = await rpcCall('eth_call', [{ to: t.address, data }, 'latest']);
-    return parseFloat(ethers.formatUnits(BigInt(hex), t.decimals)).toFixed(2);
+    try {
+      const t = TOKENS[token];
+      const data = '0x70a08231' + address.slice(2).padStart(64, '0');
+      const hex = await rpcCall('eth_call', [{ to: t.address, data }, 'latest']);
+      return parseFloat(ethers.formatUnits(BigInt(hex), t.decimals)).toFixed(2);
+    } catch { return '0.00'; }
   }
 
   async function estimateFee(isToken = false) {

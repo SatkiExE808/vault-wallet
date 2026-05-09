@@ -19,9 +19,10 @@ const LitecoinWallet = (() => {
       mnemonic, coinType: 2, hrp: 'ltc',
       toAddress, amount: amountLTC,
       fetchUTXOs: async addr => {
-        const r = await fetch(`${API}/address/${addr}/utxo`);
+        const r = await fetch(`${API}/address/${addr}/utxo`, { signal: AbortSignal.timeout(15000) });
         if (!r.ok) throw new Error('Failed to fetch UTXOs');
-        return r.json();
+        const utxos = await r.json();
+        return utxos.filter(u => u.status?.confirmed === true);
       },
       getFeeRate: async () => {
         try { const f = await fetch(`${API}/v1/fees/recommended`).then(r => r.json()); return Math.max(1, f.halfHourFee || 1); }

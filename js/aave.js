@@ -192,6 +192,10 @@ const AaveEarn = (() => {
   }
   function stopApyRefresh() {
     clearInterval(_apyTimer); _apyTimer = null;
+    // Drop the cache so re-unlocking with a different mnemonic can't briefly
+    // see APYs from the previous session before the next refresh tick.
+    _apyCache = {};
+    if (typeof state !== 'undefined') state.aaveApy = {};
   }
   function getApy(coinId) { return _apyCache[coinId] || null; }
 

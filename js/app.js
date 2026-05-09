@@ -1,3 +1,11 @@
+// HTML-escape helper for any string sourced from external APIs (tx error
+// messages, explorer URLs, etc.) before it lands inside an innerHTML string.
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => (
+    { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]
+  ));
+}
+
 // ── Wallet encryption (AES-256-GCM, PBKDF2 key derivation) ───────────────────
 async function encryptMnemonic(mnemonic, password) {
   const enc = new TextEncoder();
@@ -1055,13 +1063,13 @@ async function updateHistoryTab() {
       const badge = st === 'error'
         ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600;
              background:rgba(239,68,68,0.15);color:#ef4444">
-             Failed${tx.errorMsg ? ': ' + tx.errorMsg : ''}</span>`
+             Failed${tx.errorMsg ? ': ' + escapeHtml(tx.errorMsg) : ''}</span>`
         : st === 'pending'
         ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600;
              background:rgba(234,179,8,0.15);color:#eab308">Pending</span>`
         : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600;
              background:rgba(34,197,94,0.15);color:#22c55e">Completed</span>`;
-      const url = tx.explorerUrl || '';
+      const url = escapeHtml(tx.explorerUrl || '');
       return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
         <div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
           justify-content:center;font-size:15px;
@@ -1070,7 +1078,7 @@ async function updateHistoryTab() {
           ${send ? '↑' : '↓'}
         </div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600">${send ? 'Sent' : 'Received'} ${tx.amount} ${coin.symbol}</div>
+          <div style="font-size:13px;font-weight:600">${send ? 'Sent' : 'Received'} ${escapeHtml(tx.amount)} ${escapeHtml(coin.symbol)}</div>
           <div style="font-size:11px;color:var(--text2);margin-top:2px;display:flex;align-items:center;gap:6px">
             <span>${time}</span>${badge}
           </div>
@@ -1287,7 +1295,12 @@ document.getElementById('lock-btn').onclick = () => {
   if (typeof TxProgress !== 'undefined') TxProgress.stop();
   if (typeof AaveEarn !== 'undefined') AaveEarn.stopApyRefresh();
   state.mnemonic = null;
-  Object.assign(state, { addresses: {}, balances: {}, extras: {}, active: 'BTC' });
+  // Wipe ALL session state so prices / aave APYs / addresses from this
+  // session don't leak into the next unlock.
+  Object.assign(state, {
+    addresses: {}, balances: {}, extras: {}, prices: {}, aaveApy: {},
+    active: 'BTC',
+  });
   document.getElementById('app').style.display = 'none';
   document.getElementById('setup-screen').style.display = 'flex';
   showUnlock();
@@ -1434,6 +1447,13 @@ function handleCoinToggle(checkbox) {
 
   enabledCoins.add(id);
   saveEnabledCoins();
+
+  // If the newly enabled asset earns yield via Aave, kick an APY refresh
+  // immediately so the badge appears right away instead of waiting for
+  // the next 5-minute tick.
+  if (typeof AaveEarn !== 'undefined' && AaveEarn.isSupported?.(id)) {
+    AaveEarn.refreshAllApys?.().catch(() => {});
+  }
 
   // Lazy-derive address for newly enabled coin
   const coin = COINS.find(c => c.id === id);
