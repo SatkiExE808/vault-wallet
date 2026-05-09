@@ -1141,6 +1141,63 @@ body {
   padding: 10px 28px;
 }
 
+/* ── QR camera scanner overlay ─────────────────────────────────── */
+.qr-scanner-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qr-scanner-overlay video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.qrs-frame {
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  pointer-events: none;
+}
+/* Four corner brackets — scanner-style viewfinder. */
+.qrs-corner {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border: 4px solid var(--accent);
+  box-shadow: 0 0 16px rgba(249,115,22,0.6);
+}
+.qrs-tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 12px; }
+.qrs-tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 12px; }
+.qrs-bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 12px; }
+.qrs-br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 12px; }
+.qrs-hint {
+  position: absolute;
+  bottom: calc(100px + var(--sa-bot));
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+  padding: 0 20px;
+}
+.qrs-cancel {
+  position: absolute;
+  bottom: calc(40px + var(--sa-bot));
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255,255,255,0.95);
+  color: #000;
+  border: none;
+  font-weight: 600;
+  padding: 10px 28px;
+}
+
 /* ── Settings menu items ────────────────────────────────────── */
 .settings-menu-item {
   width: 100%;
