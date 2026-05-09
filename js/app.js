@@ -579,6 +579,7 @@ function showNewWallet() {
     <div class="seed-display">
       ${words.map((w, i) => `<div class="seed-word"><span>${i + 1}</span>${w}</div>`).join('')}
     </div>
+    <button class="btn btn-outline btn-sm" id="btn-copy-seed" style="width:100%;margin-top:10px">⧉ Copy all words</button>
     <label style="display:flex;align-items:center;gap:10px;font-size:13px;margin:16px 0;cursor:pointer">
       <input type="checkbox" id="chk-backup"> I have written down my recovery phrase
     </label>
@@ -586,6 +587,10 @@ function showNewWallet() {
     <button class="btn btn-outline btn-sm" id="btn-back" style="width:100%;margin-top:10px">Back</button>`;
   document.getElementById('chk-backup').onchange = e =>
     document.getElementById('btn-continue').disabled = !e.target.checked;
+  document.getElementById('btn-copy-seed').onclick = async () => {
+    try { await navigator.clipboard.writeText(phrase); toast('Recovery phrase copied — clear your clipboard after saving it'); }
+    catch { toast('Copy failed'); }
+  };
   document.getElementById('btn-continue').onclick = async () => {
     const btn = document.getElementById('btn-continue');
     btn.disabled = true; btn.textContent = 'Fetching block height…';
