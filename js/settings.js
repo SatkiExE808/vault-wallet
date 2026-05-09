@@ -431,6 +431,13 @@
         ? 'Disable Biometric Unlock'
         : 'Enable Face ID / Biometric';
     }
+    // Re-sync the right-side value labels so they reflect the live state
+    // (e.g. after import-with-passphrase, the page-load wire() ran while
+    // the flag was still off, so without this refresh the menu shows "Off"
+    // even though the passphrase is active).
+    refreshCurrencyLabel();
+    refresh2FALabel();
+    refreshPassphraseLabel();
   }
   window.renderSettingsTab = renderSettingsTab;
 
