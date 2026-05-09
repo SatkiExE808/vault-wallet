@@ -41,10 +41,13 @@ const AaveEarn = (() => {
     USDC_BEP20: { chain: 'BSC',       underlying: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', dec: 18 },
   };
 
+  const CHAIN_IDS = {
+    POLYGON: 137, ARBITRUM: 42161, OPTIMISM: 10, AVALANCHE: 43114, BASE: 8453, BSC: 56,
+  };
+
   const POOL_ABI = [
     'function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external',
     'function withdraw(address asset, uint256 amount, address to) external returns (uint256)',
-    'function getReserveData(address asset) external view returns (tuple(uint256 configuration, uint128 liquidityIndex, uint128 currentLiquidityRate, uint128 variableBorrowIndex, uint128 currentVariableBorrowRate, uint128 currentStableBorrowRate, uint40 lastUpdateTimestamp, uint16 id, address aTokenAddress, address stableDebtTokenAddress, address variableDebtTokenAddress, address interestRateStrategyAddress, uint128 accruedToTreasury, uint128 unbacked, uint128 isolationModeTotalDebt))',
   ];
 
   const ERC20_ABI = [
@@ -55,36 +58,64 @@ const AaveEarn = (() => {
 
   const _providerCache = {};
   function getProvider(chain) {
-    if (!_providerCache[chain]) _providerCache[chain] = new ethers.JsonRpcProvider(RPC[chain]);
+    if (!_providerCache[chain]) {
+      // staticNetwork avoids ethers' auto chain-id probe, which some public
+      // RPCs reject or rate-limit and is the most common cause of
+      // "Failed to load Aave data" on a fresh modal open.
+      const network = ethers.Network.from(CHAIN_IDS[chain]);
+      _providerCache[chain] = new ethers.JsonRpcProvider(RPC[chain], network, { staticNetwork: network });
+    }
     return _providerCache[chain];
+  }
+
+  // Raw eth_call avoids ABI mismatches across Aave v3.0 / v3.1 / v3.2
+  // (each version added fields to ReserveData). We only read the slots we
+  // care about: currentLiquidityRate (slot 2) and aTokenAddress (slot 8).
+  async function rawEthCall(rpcUrl, to, dataHex) {
+    const r = await fetch(rpcUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to, data: dataHex }, 'latest'] }),
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status} from ${new URL(rpcUrl).host}`);
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message || 'RPC error');
+    return j.result;
+  }
+
+  async function readReserve(chain, underlying) {
+    const selector = '0x35ea6a75'; // keccak256("getReserveData(address)").slice(0,4)
+    const padded = underlying.replace(/^0x/, '').toLowerCase().padStart(64, '0');
+    const result = await rawEthCall(RPC[chain], POOLS[chain], selector + padded);
+    if (!result || result === '0x') throw new Error('Empty getReserveData response');
+    const hex = result.replace(/^0x/, '');
+    if (hex.length < 64 * 9) throw new Error(`Short response: ${hex.length} hex chars`);
+    const liquidityRate = BigInt('0x' + hex.slice(64 * 2, 64 * 3));
+    const aTokenAddr = ethers.getAddress('0x' + hex.slice(64 * 8 + 24, 64 * 9));
+    return { liquidityRate, aTokenAddr };
   }
 
   function isSupported(coinId) { return !!SUPPORTED[coinId]; }
 
-  // Returns { apy, deposited, depositedFormatted } or null on failure.
+  // Throws on failure so the UI can show the actual error message.
   async function getInfo(coinId, userAddress) {
     const cfg = SUPPORTED[coinId];
-    if (!cfg) return null;
-    try {
-      const provider = getProvider(cfg.chain);
-      const pool = new ethers.Contract(POOLS[cfg.chain], POOL_ABI, provider);
-      const data = await pool.getReserveData(cfg.underlying);
-      const aTokenAddr = data.aTokenAddress;
-      const aToken = new ethers.Contract(aTokenAddr, ERC20_ABI, provider);
-      const balance = await aToken.balanceOf(userAddress);
-      // Aave's currentLiquidityRate is a "ray" (1e27) per-second rate.
-      // APY ≈ (1 + ratePerSecond) ^ secondsPerYear − 1.
-      const SECONDS_PER_YEAR = 31_536_000;
-      const ratePerSec = Number(data.currentLiquidityRate) / 1e27;
-      const apy = ((1 + ratePerSec) ** SECONDS_PER_YEAR - 1) * 100;
-      const depositedFormatted = ethers.formatUnits(balance, cfg.dec);
-      return {
-        apy: apy.toFixed(2),
-        deposited: balance,
-        depositedFormatted: parseFloat(depositedFormatted).toFixed(cfg.dec <= 6 ? 2 : 4),
-        aTokenAddress: aTokenAddr,
-      };
-    } catch (e) { console.error('Aave getInfo:', e); return null; }
+    if (!cfg) throw new Error(`Asset ${coinId} not on Aave`);
+    const { liquidityRate, aTokenAddr } = await readReserve(cfg.chain, cfg.underlying);
+    const provider = getProvider(cfg.chain);
+    const aToken = new ethers.Contract(aTokenAddr, ERC20_ABI, provider);
+    const balance = await aToken.balanceOf(userAddress);
+    // Aave's currentLiquidityRate is a "ray" (1e27) per-second rate.
+    // APY ≈ (1 + ratePerSecond) ^ secondsPerYear − 1.
+    const SECONDS_PER_YEAR = 31_536_000;
+    const ratePerSec = Number(liquidityRate) / 1e27;
+    const apy = ((1 + ratePerSec) ** SECONDS_PER_YEAR - 1) * 100;
+    return {
+      apy: apy.toFixed(2),
+      deposited: balance,
+      depositedFormatted: parseFloat(ethers.formatUnits(balance, cfg.dec)).toFixed(cfg.dec <= 6 ? 2 : 4),
+      aTokenAddress: aTokenAddr,
+    };
   }
 
   async function supply(mnemonic, coinId, amount) {

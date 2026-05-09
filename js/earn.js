@@ -70,11 +70,14 @@ const Earn = (() => {
     let info = null;
     AaveEarn.getInfo(coinId, addr).then(res => {
       info = res;
-      if (!res) { infoDiv.innerHTML = '<span style="color:var(--red)">Failed to load Aave data</span>'; return; }
       infoDiv.innerHTML = `
         <div>Currently deposited: <b>${res.depositedFormatted} ${symbol}</b></div>
         <div>Current APY: <b style="color:var(--green)">${res.apy}%</b></div>
       `;
+    }).catch(e => {
+      const msg = e?.message || String(e);
+      infoDiv.innerHTML = `<span style="color:var(--red)">Aave: ${msg}</span>`;
+      console.error('Aave getInfo error:', e);
     });
 
     const actionSeg = wireSeg(root, 'ern-action', v => {
