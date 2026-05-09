@@ -1,4 +1,4 @@
-const CACHE = 'vault-v46';
+const CACHE = 'vault-v47';
 const LOCAL_FILES = [
   './index.html',
   './manifest.json',
@@ -15,6 +15,7 @@ const LOCAL_FILES = [
   './js/coins/evm-chains.js',
   './js/coins/monero.js',
   './js/coins/tron.js',
+  './js/coins/solana.js',
 ];
 
 // Cache local files on install

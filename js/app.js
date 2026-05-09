@@ -369,6 +369,18 @@ const COINS = [
     history: addr => DogecoinWallet.getHistory(addr),
     explorerAddr: addr => `https://dogechain.info/address/${addr}`,
   },
+
+  // ── Solana ──
+  {
+    id: 'SOL', name: 'Solana', symbol: 'SOL', category: 'Solana',
+    icon: `${CDN}/sol.svg`, color: '#9945ff', networkClass: 'network-sol',
+    derive:  m    => SolanaWallet.deriveAddress(m),
+    balance: addr => SolanaWallet.getBalance(addr),
+    canSend: true, defaultEnabled: false,
+    send: async (m, to, amt) => SolanaWallet.sendSOL(m, to, amt),
+    history: addr => SolanaWallet.getHistory(addr),
+    explorerAddr: addr => `https://solscan.io/account/${addr}`,
+  },
 ];
 
 // ── EVM chain config — Blockscout (free, no API key) + explorer links ─────────
@@ -496,6 +508,7 @@ const PRICE_IDS = {
   TRX:        'tron',       USDT_TRC20: 'tether',
   LTC:        'litecoin',
   DOGE:       'dogecoin',
+  SOL:        'solana',
 };
 
 function formatUSD(balStr, price) {
@@ -1145,6 +1158,14 @@ function validateAddress(address, coinId) {
     if ((!address.startsWith('4') && !address.startsWith('8')) || address.length !== 95)
       return 'Invalid Monero address';
     return null;
+  }
+  if (coinId === 'SOL') {
+    try {
+      if (typeof solanaWeb3 === 'undefined') return null; // lib not loaded yet — skip
+      const pk = new solanaWeb3.PublicKey(address);
+      if (!solanaWeb3.PublicKey.isOnCurve(pk.toBytes())) return 'Invalid Solana address';
+      return null;
+    } catch { return 'Invalid Solana address'; }
   }
   return null;
 }
