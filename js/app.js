@@ -784,8 +784,7 @@ window.getPassphrase = function() {
   return (state && state.passphrase) || '';
 };
 
-// Whether the user has opted in to passphrase protection. We DON'T store
-// the passphrase itself — only whether to prompt for one on unlock.
+// Whether the user has opted in to passphrase protection.
 function isPassphraseEnabled() {
   return localStorage.getItem('vault.passphrase_enabled') === 'true';
 }
@@ -795,6 +794,18 @@ function setPassphraseEnabled(on) {
 }
 window.isPassphraseEnabled = isPassphraseEnabled;
 window.setPassphraseEnabled = setPassphraseEnabled;
+
+// Decrypt the saved passphrase blob with the unlock password. Returns
+// the passphrase string, or null if no blob is stored. Throws on a
+// corrupt/foreign blob (caller treats that the same as null and falls
+// back to the prompt).
+async function loadStoredPassphrase(password) {
+  const blob = localStorage.getItem('vault.passphrase_blob');
+  if (!blob) return null;
+  try { return await decryptMnemonic(blob, password); }
+  catch { return null; }
+}
+window.loadStoredPassphrase = loadStoredPassphrase;
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
 function showSetup() {
@@ -926,13 +937,18 @@ async function completeSetup(mnemonic, restoreHeight, password, passphrase = '')
     if (roundTrip !== mnemonic) throw new Error('Encrypted wallet failed verification — refusing to discard backup');
     localStorage.removeItem('wallet_mnemonic'); // remove legacy plaintext if any
     // If a passphrase was supplied (import or new-wallet flow), set the
-    // in-memory passphrase + flag so derivation lands on the right addresses
-    // and future unlocks prompt for it. Empty string = standard wallet.
+    // in-memory passphrase + flag, AND save it encrypted with the same
+    // password so future unlocks apply it automatically. The passphrase is
+    // never stored in plaintext, and seed-leak protection is preserved
+    // (a leaked seed alone is still useless without device + password).
     if (passphrase) {
       state.passphrase = passphrase;
       setPassphraseEnabled(true);
+      const encPp = await encryptMnemonic(passphrase, password);
+      localStorage.setItem('vault.passphrase_blob', encPp);
     } else {
       state.passphrase = '';
+      localStorage.removeItem('vault.passphrase_blob');
     }
     state.mnemonic = mnemonic;
     await loadWallet();
@@ -965,14 +981,15 @@ function showUnlock() {
       // Opportunistic upgrade of v1 blobs (300k iterations) to v2 (600k).
       // Fire-and-forget — never block the unlock flow on an upgrade attempt.
       maybeUpgradeEncryption(mnemonic, pwd).catch(() => {});
-      // If passphrase protection is on, ask for the 25th word before deriving.
-      // Wrong passphrase silently produces a different (empty) wallet — this is
-      // a BIP39 design feature ("plausible deniability"), not a bug.
-      if (isPassphraseEnabled()) {
+      const pp = await loadStoredPassphrase(pwd);
+      if (isPassphraseEnabled() && pp === null) {
+        // Flag is on but no saved blob — fall back to prompting (legacy
+        // wallets that enabled passphrase under the old "ask every time"
+        // behavior, or anyone who explicitly chose "Always prompt").
         showPassphrasePrompt(mnemonic);
         return;
       }
-      state.passphrase = '';
+      state.passphrase = pp || '';
       state.mnemonic = mnemonic;
       await loadWallet();
     } catch {
@@ -989,11 +1006,12 @@ function showUnlock() {
       const pwd = await window.unlockWithBiometric();
       const mnemonic = await decryptMnemonic(localStorage.getItem('wallet_encrypted'), pwd);
       maybeUpgradeEncryption(mnemonic, pwd).catch(() => {});
-      if (isPassphraseEnabled()) {
+      const pp = await loadStoredPassphrase(pwd);
+      if (isPassphraseEnabled() && pp === null) {
         showPassphrasePrompt(mnemonic);
         return;
       }
-      state.passphrase = '';
+      state.passphrase = pp || '';
       state.mnemonic = mnemonic;
       await loadWallet();
     } catch (e) {
