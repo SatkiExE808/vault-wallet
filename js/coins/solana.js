@@ -241,6 +241,82 @@ const SolanaWallet = (() => {
     return await conn.sendRawTransaction(tx.serialize());
   }
 
+  // ── Liquid staking via Jupiter (JupSOL) ─────────────────────────────
+  // We swap through Jupiter's aggregator instead of calling the stake-pool
+  // deposit/withdraw instructions directly — this lets the user enter and
+  // exit the position instantly with no setup.
+  const JUPSOL_MINT = 'jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v';
+  const SOL_MINT    = 'So11111111111111111111111111111111111111112';
+  const JUP_API     = 'https://quote-api.jup.ag/v6';
+
+  async function getJupSolBalance(address) {
+    try {
+      const res = await rpcCall('getTokenAccountsByOwner', [
+        address,
+        { mint: JUPSOL_MINT },
+        { encoding: 'jsonParsed' },
+      ]);
+      const accounts = res?.value || [];
+      let total = 0;
+      for (const a of accounts) {
+        total += Number(a.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0);
+      }
+      return total.toFixed(6);
+    } catch { return '0.000000'; }
+  }
+
+  // Returns SOL equivalent of 1 JupSOL via a quick Jupiter quote.
+  async function getJupSolRate() {
+    try {
+      const r = await fetch(`${JUP_API}/quote?inputMint=${JUPSOL_MINT}&outputMint=${SOL_MINT}&amount=1000000000&slippageBps=50`,
+        { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) return null;
+      const j = await r.json();
+      return Number(j.outAmount) / 1e9;
+    } catch { return null; }
+  }
+
+  async function jupiterSwap(mnemonic, inputMint, outputMint, amountAtomic) {
+    const kp = await deriveKeypair(mnemonic);
+    const userPk = kp.publicKey.toBase58();
+    const qRes = await fetch(`${JUP_API}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountAtomic}&slippageBps=50`,
+      { signal: AbortSignal.timeout(10000) });
+    if (!qRes.ok) throw new Error(`Quote failed: HTTP ${qRes.status}`);
+    const quote = await qRes.json();
+    const sRes = await fetch(`${JUP_API}/swap`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quoteResponse: quote,
+        userPublicKey: userPk,
+        wrapAndUnwrapSol: true,
+        dynamicComputeUnitLimit: true,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!sRes.ok) throw new Error(`Swap build failed: HTTP ${sRes.status}`);
+    const { swapTransaction } = await sRes.json();
+    if (!swapTransaction) throw new Error('No swap transaction returned');
+    const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
+    const tx = solanaWeb3.VersionedTransaction.deserialize(txBytes);
+    tx.sign([kp]);
+    const conn = new solanaWeb3.Connection(RPCS[0], 'confirmed');
+    return await conn.sendRawTransaction(tx.serialize());
+  }
+
+  async function liquidStakeJupSol(mnemonic, solAmount) {
+    const lamports = Math.floor(Number(solAmount) * solanaWeb3.LAMPORTS_PER_SOL);
+    if (!Number.isFinite(lamports) || lamports <= 0) throw new Error('Invalid amount');
+    return jupiterSwap(mnemonic, SOL_MINT, JUPSOL_MINT, lamports);
+  }
+
+  async function liquidUnstakeJupSol(mnemonic, jupSolAmount) {
+    // JupSOL has 9 decimals like SOL.
+    const amount = Math.floor(Number(jupSolAmount) * 1e9);
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error('Invalid amount');
+    return jupiterSwap(mnemonic, JUPSOL_MINT, SOL_MINT, amount);
+  }
+
   return { deriveAddress, getBalance, sendSOL, getHistory,
-           getStakeAccounts, stakeSOL, deactivateStake, withdrawStake };
+           getStakeAccounts, stakeSOL, deactivateStake, withdrawStake,
+           getJupSolBalance, getJupSolRate, liquidStakeJupSol, liquidUnstakeJupSol };
 })();
