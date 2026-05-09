@@ -128,14 +128,33 @@
     });
   }
 
-  // ── Biometric (Face ID / Touch ID / fingerprint via WebAuthn) ─
+  // ── Biometric ──────────────────────────────────────────────
+  // Two paths:
+  //  1. Capacitor app → use @aparajita/capacitor-biometric-auth native plugin
+  //  2. Browser PWA   → fall back to WebAuthn
+  function getNativePlugin() {
+    return window.Capacitor?.Plugins?.BiometricAuth || null;
+  }
+
   async function biometricSupported() {
+    const native = getNativePlugin();
+    if (native) {
+      try {
+        const r = await native.checkBiometry();
+        // r = { isAvailable, biometryType, reason, code }
+        if (!r.isAvailable) return { ok: false, reason: r.reason || 'Biometric not available on this device' };
+        return { ok: true, native: true };
+      } catch (e) {
+        return { ok: false, reason: 'Biometric check failed: ' + (e.message || e.code || e) };
+      }
+    }
+    // Browser fallback: WebAuthn
     if (!window.PublicKeyCredential || !navigator.credentials || !navigator.credentials.create) return { ok: false, reason: 'WebAuthn API not available in this browser' };
-    if (!window.isSecureContext)                           return { ok: false, reason: 'Page must be loaded over HTTPS' };
+    if (!window.isSecureContext) return { ok: false, reason: 'Page must be loaded over HTTPS' };
     try {
       const platformAvailable = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
       if (!platformAvailable) return { ok: false, reason: 'No Face ID / fingerprint configured on this device' };
-      return { ok: true };
+      return { ok: true, native: false };
     } catch (e) {
       return { ok: false, reason: 'Platform authenticator check failed: ' + (e.message || e.name) };
     }
@@ -143,37 +162,49 @@
 
   async function enableBiometric() {
     const support = await biometricSupported();
-    if (!support.ok) {
-      toast(support.reason);
-      return;
-    }
+    if (!support.ok) { toast(support.reason); return; }
+
     passwordModal({
       title: '👆 Enable Biometric Unlock',
       message: 'Enter your password to enable Face ID / fingerprint unlock.',
       onSubmit: async (pwd, closeFirst) => {
         try {
-          // Register a WebAuthn credential bound to biometric
-          const challenge = crypto.getRandomValues(new Uint8Array(32));
-          const userId = crypto.getRandomValues(new Uint8Array(16));
-          const cred = await navigator.credentials.create({
-            publicKey: {
-              challenge,
-              rp:   { name: 'Vault Wallet' },
-              user: { id: userId, name: 'wallet', displayName: 'Vault User' },
-              pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
-              authenticatorSelection: {
-                authenticatorAttachment: 'platform',
-                userVerification:        'required',
-                residentKey:             'preferred',
+          if (support.native) {
+            // Native plugin path: just verify biometric works, then store password
+            // encrypted with a random key. The plugin's authenticate() prompt is
+            // the gate to retrieving them on unlock.
+            const native = getNativePlugin();
+            await native.authenticate({
+              reason: 'Enable biometric unlock for Vault',
+              cancelTitle: 'Cancel',
+              androidTitle: 'Vault Wallet',
+              androidSubtitle: 'Verify it\'s you to enable biometric',
+            });
+          } else {
+            // WebAuthn path
+            const challenge = crypto.getRandomValues(new Uint8Array(32));
+            const userId = crypto.getRandomValues(new Uint8Array(16));
+            const cred = await navigator.credentials.create({
+              publicKey: {
+                challenge,
+                rp:   { name: 'Vault Wallet' },
+                user: { id: userId, name: 'wallet', displayName: 'Vault User' },
+                pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+                authenticatorSelection: {
+                  authenticatorAttachment: 'platform',
+                  userVerification:        'required',
+                  residentKey:             'preferred',
+                },
+                timeout: 60000,
+                attestation: 'none',
               },
-              timeout: 60000,
-              attestation: 'none',
-            },
-          });
-          if (!cred) throw new Error('Biometric setup cancelled');
+            });
+            if (!cred) throw new Error('Biometric setup cancelled');
+            localStorage.setItem('biometric_credential_id', btoa(String.fromCharCode(...new Uint8Array(cred.rawId))));
+          }
 
-          // Encrypt the password with a random key, save key+encrypted-password locally.
-          // Biometric (WebAuthn) is the gate to retrieving them — same trust model as iOS Keychain.
+          // Encrypt password with random key. The biometric prompt at unlock is
+          // the gate that decides whether the saved key gets used.
           const aesKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
           const iv = crypto.getRandomValues(new Uint8Array(12));
           const enc = new TextEncoder();
@@ -182,14 +213,14 @@
           const blob = btoa(String.fromCharCode(...iv, ...new Uint8Array(rawKey), ...new Uint8Array(ct)));
 
           localStorage.setItem('biometric_enabled', '1');
-          localStorage.setItem('biometric_credential_id', btoa(String.fromCharCode(...new Uint8Array(cred.rawId))));
+          localStorage.setItem('biometric_method', support.native ? 'native' : 'webauthn');
           localStorage.setItem('biometric_blob', blob);
           closeFirst();
           toast('✓ Biometric unlock enabled');
           renderSettingsTab();
         } catch (e) {
           closeFirst();
-          toast('Biometric setup failed: ' + (e.message || e.name));
+          toast('Biometric setup failed: ' + (e.message || e.code || e.name));
         }
       },
     });
@@ -200,27 +231,41 @@
     localStorage.removeItem('biometric_enabled');
     localStorage.removeItem('biometric_credential_id');
     localStorage.removeItem('biometric_blob');
+    localStorage.removeItem('biometric_method');
     toast('Biometric disabled');
     renderSettingsTab();
   }
 
   // ── Unlock with biometric ──────────────────────────────────
   async function unlockWithBiometric() {
-    const credIdB64 = localStorage.getItem('biometric_credential_id');
-    const blobB64   = localStorage.getItem('biometric_blob');
-    if (!credIdB64 || !blobB64) throw new Error('Biometric not configured');
+    const blobB64 = localStorage.getItem('biometric_blob');
+    if (!blobB64) throw new Error('Biometric not configured');
+    const method = localStorage.getItem('biometric_method') || 'webauthn';
 
-    const credIdBytes = Uint8Array.from(atob(credIdB64), c => c.charCodeAt(0));
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
-    const assertion = await navigator.credentials.get({
-      publicKey: {
-        challenge,
-        allowCredentials: [{ type: 'public-key', id: credIdBytes }],
-        userVerification: 'required',
-        timeout: 60000,
-      },
-    });
-    if (!assertion) throw new Error('Biometric verification cancelled');
+    if (method === 'native') {
+      const native = getNativePlugin();
+      if (!native) throw new Error('Native biometric plugin not available — reinstall app');
+      await native.authenticate({
+        reason: 'Unlock Vault wallet',
+        cancelTitle: 'Cancel',
+        androidTitle: 'Unlock Vault',
+        androidSubtitle: 'Verify it\'s you',
+      });
+    } else {
+      const credIdB64 = localStorage.getItem('biometric_credential_id');
+      if (!credIdB64) throw new Error('Biometric credential missing — re-enable biometric');
+      const credIdBytes = Uint8Array.from(atob(credIdB64), c => c.charCodeAt(0));
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+      const assertion = await navigator.credentials.get({
+        publicKey: {
+          challenge,
+          allowCredentials: [{ type: 'public-key', id: credIdBytes }],
+          userVerification: 'required',
+          timeout: 60000,
+        },
+      });
+      if (!assertion) throw new Error('Biometric verification cancelled');
+    }
 
     const blobBytes = Uint8Array.from(atob(blobB64), c => c.charCodeAt(0));
     const iv = blobBytes.slice(0, 12);
