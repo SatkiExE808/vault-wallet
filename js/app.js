@@ -6,6 +6,39 @@ function escapeHtml(s) {
   ));
 }
 
+// Custom confirm dialog — drop-in replacement for the browser-native
+// confirm(), which on Android/iOS WebViews renders as an OS pop-up that
+// clashes with the wallet's dark theme. Pass a `lines` array of
+// [label, value] tuples (or [label, value, { code: true }] for monospace
+// values like addresses) to render a structured key/value summary.
+// Returns Promise<boolean>.
+function confirmModal({ title = 'Confirm', lines = [], confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger = false } = {}) {
+  return new Promise(resolve => {
+    const root = document.createElement('div');
+    root.className = 'modal-backdrop';
+    const linesHtml = lines.map(([label, value, opts = {}]) => `
+      <div class="confirm-row">
+        <span class="confirm-label">${escapeHtml(label)}</span>
+        <span class="confirm-value${opts.code ? ' confirm-value-code' : ''}">${escapeHtml(String(value))}</span>
+      </div>
+    `).join('');
+    root.innerHTML = `<div class="modal">
+      <h2>${escapeHtml(title)}</h2>
+      <div class="confirm-rows">${linesHtml}</div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="cm-cancel">${escapeHtml(cancelLabel)}</button>
+        <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="cm-ok">${escapeHtml(confirmLabel)}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(root);
+    const close = (val) => { root.remove(); resolve(val); };
+    root.querySelector('#cm-ok').onclick = () => close(true);
+    root.querySelector('#cm-cancel').onclick = () => close(false);
+    root.addEventListener('click', e => { if (e.target === root) close(false); });
+  });
+}
+window.confirmModal = confirmModal;
+
 // ── Wallet encryption (AES-256-GCM, PBKDF2 key derivation) ───────────────────
 //
 // Format v1 (legacy): salt(16) | iv(12) | ciphertext, 300k PBKDF2 iterations.
@@ -1345,7 +1378,11 @@ async function validateEvmGas(coinId, amt) {
       : await EVMChains.getNative(addr, g.chain);
   }
   if (parseFloat(feeBal) < fee) {
-    throw new Error(`Not enough ${feeInfo.symbol} for gas. Need ~${fee.toFixed(6)} ${feeInfo.symbol}, have ${feeBal}`);
+    const needed = (fee - parseFloat(feeBal || '0')).toFixed(6).replace(/\.?0+$/, '');
+    throw new Error(
+      `Need ~${fee.toFixed(6)} ${feeInfo.symbol} for gas (have ${feeBal}). ` +
+      `Top up at least ${needed} ${feeInfo.symbol} on this chain to send.`
+    );
   }
   if (!g.token) {
     const bal = parseFloat(state.balances[coinId] || '0');
@@ -1365,9 +1402,18 @@ document.getElementById('do-send-btn').onclick = async () => {
   const addrErr = validateAddress(to, coin.id);
   if (addrErr) { toast(addrErr); return; }
   const feeText = document.getElementById('send-fee-display')?.textContent || '';
-  // Show full address in confirm dialog so a clipboard-poisoning swap is visible
-  const confirmMsg = `Send ${amt} ${coin.symbol}?\n\nTo:\n${to}\n${feeText ? '\nFee: ' + feeText : ''}`;
-  if (!confirm(confirmMsg)) return;
+  const showFee = feeText && feeText !== '—' && feeText !== 'Estimating…';
+  // Show the full address so a clipboard-poisoning swap is visible.
+  const ok = await confirmModal({
+    title: 'Confirm Send',
+    lines: [
+      ['Amount', `${amt} ${coin.symbol}`],
+      ['To', to, { code: true }],
+      ...(showFee ? [['Network fee', feeText]] : []),
+    ],
+    confirmLabel: 'Send',
+  });
+  if (!ok) return;
 
   // Require biometric / password before broadcasting — guards against shoulder-surfing
   // and accidental sends if someone grabs the unlocked phone.

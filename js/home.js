@@ -323,8 +323,16 @@
       if (addrErr) { toast(addrErr); return; }
       const feeText = $('wd-send-fee-display')?.textContent || '';
       const showFee = feeText && feeText !== '—' && feeText !== 'Estimating…';
-      const confirmMsg = `Send ${amt} ${coin.symbol}?\n\nTo:\n${to}${showFee ? '\n\nFee: ' + feeText : ''}`;
-      if (!confirm(confirmMsg)) return;
+      const ok = await confirmModal({
+        title: 'Confirm Send',
+        lines: [
+          ['Amount', `${amt} ${coin.symbol}`],
+          ['To', to, { code: true }],
+          ...(showFee ? [['Network fee', feeText]] : []),
+        ],
+        confirmLabel: 'Send',
+      });
+      if (!ok) return;
       if (typeof verifyAuth === 'function') {
         try { await verifyAuth(`Confirm sending ${amt} ${coin.symbol}`); }
         catch { toast('Send cancelled'); return; }

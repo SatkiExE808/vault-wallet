@@ -1008,6 +1008,44 @@ body {
   white-space: nowrap;
 }
 
+/* ── Custom confirm dialog (replaces browser confirm) ──────────── */
+.confirm-rows {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0 14px;
+  margin: 14px 0 18px;
+}
+.confirm-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 11px 0;
+  gap: 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.confirm-row:last-child { border-bottom: none; }
+.confirm-label {
+  color: var(--text2);
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+.confirm-value {
+  color: var(--text);
+  font-weight: 600;
+  text-align: right;
+  word-break: break-all;
+  min-width: 0;
+}
+.confirm-value-code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text2);
+  letter-spacing: -0.2px;
+}
+
 /* ── Settings menu items ────────────────────────────────────── */
 .settings-menu-item {
   width: 100%;
