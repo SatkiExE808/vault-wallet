@@ -1003,10 +1003,20 @@ function showUnlock() {
       err.style.display = 'block';
     }
   });
-  document.getElementById('btn-forgot').onclick = () => {
-    if (confirm('Remove wallet from this device? Make absolutely sure you have your recovery phrase backed up.')) {
-      localStorage.clear(); location.reload();
-    }
+  document.getElementById('btn-forgot').onclick = async () => {
+    const ok = typeof confirmModal === 'function'
+      ? await confirmModal({
+          title: 'Remove Wallet',
+          lines: [
+            ['Action', 'Wipe this wallet from this device.'],
+            ['Warning', 'You can ONLY restore it with your recovery phrase. Without the phrase your funds are gone forever.'],
+          ],
+          confirmLabel: 'Remove',
+          danger: true,
+        })
+      : window.confirm('Remove wallet from this device? Make absolutely sure you have your recovery phrase backed up.');
+    if (!ok) return;
+    localStorage.clear(); location.reload();
   };
 }
 
@@ -1776,10 +1786,20 @@ function renderSettingsList() {
   loadLegacyRecovery();
 }
 
-function confirmResetWallet() {
-  if (confirm('Permanently remove this wallet from the device? Make absolutely sure your recovery phrase is backed up.')) {
-    localStorage.clear(); location.reload();
-  }
+async function confirmResetWallet() {
+  const ok = typeof confirmModal === 'function'
+    ? await confirmModal({
+        title: 'Reset Wallet',
+        lines: [
+          ['Action', 'Permanently wipe this wallet from this device.'],
+          ['Warning', 'Recovery requires your seed phrase. Without it your funds are gone forever.'],
+        ],
+        confirmLabel: 'Reset',
+        danger: true,
+      })
+    : window.confirm('Permanently remove this wallet from the device? Make absolutely sure your recovery phrase is backed up.');
+  if (!ok) return;
+  localStorage.clear(); location.reload();
 }
 
 async function loadLegacyRecovery() {
