@@ -105,17 +105,24 @@ const AaveEarn = (() => {
     const provider = getProvider(cfg.chain);
     const aToken = new ethers.Contract(aTokenAddr, ERC20_ABI, provider);
     const balance = await aToken.balanceOf(userAddress);
-    // Aave's currentLiquidityRate is a "ray" (1e27) per-second rate.
-    // APY ≈ (1 + ratePerSecond) ^ secondsPerYear − 1.
-    const SECONDS_PER_YEAR = 31_536_000;
-    const ratePerSec = Number(liquidityRate) / 1e27;
-    const apy = ((1 + ratePerSec) ** SECONDS_PER_YEAR - 1) * 100;
     return {
-      apy: apy.toFixed(2),
+      apy: rateToApyPercent(liquidityRate),
       deposited: balance,
       depositedFormatted: parseFloat(ethers.formatUnits(balance, cfg.dec)).toFixed(cfg.dec <= 6 ? 2 : 4),
       aTokenAddress: aTokenAddr,
     };
+  }
+
+  // Aave's currentLiquidityRate is the *annualized* rate (APR) in ray (1e27).
+  // The APY accounts for per-second compounding:
+  //   APY = (1 + APR / secondsPerYear) ^ secondsPerYear − 1
+  // Returns a string like "5.42" for the live badge.
+  function rateToApyPercent(liquidityRate) {
+    const SECONDS_PER_YEAR = 31_536_000;
+    const apr = Number(liquidityRate) / 1e27;
+    if (!Number.isFinite(apr) || apr < 0) return '0.00';
+    const apy = ((1 + apr / SECONDS_PER_YEAR) ** SECONDS_PER_YEAR - 1) * 100;
+    return Number.isFinite(apy) ? apy.toFixed(2) : '0.00';
   }
 
   async function supply(mnemonic, coinId, amount) {
@@ -162,10 +169,7 @@ const AaveEarn = (() => {
       const cfg = SUPPORTED[id];
       try {
         const { liquidityRate } = await readReserve(cfg.chain, cfg.underlying);
-        const SECONDS_PER_YEAR = 31_536_000;
-        const ratePerSec = Number(liquidityRate) / 1e27;
-        const apy = ((1 + ratePerSec) ** SECONDS_PER_YEAR - 1) * 100;
-        _apyCache[id] = apy.toFixed(2);
+        _apyCache[id] = rateToApyPercent(liquidityRate);
       } catch { /* leave previous value */ }
     }));
     if (typeof state !== 'undefined') state.aaveApy = { ..._apyCache };
