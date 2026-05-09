@@ -863,8 +863,8 @@ function updateReceiveTab() {
   const out = document.getElementById('qr-output');
   out.innerHTML = '';
   if (addr !== '—' && typeof QRCode !== 'undefined') {
-    new QRCode(out, { text: addr, width: 180, height: 180,
-      colorDark: '#e2e8f0', colorLight: '#1a1d27', correctLevel: QRCode.CorrectLevel.M });
+    new QRCode(out, { text: addr, width: 320, height: 320,
+      colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.H });
   }
 
   // Remove any existing keys export section

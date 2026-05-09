@@ -182,9 +182,9 @@
     qrSlot.innerHTML = '';
     if (typeof QRCode !== 'undefined' && addr && addr !== '—') {
       new QRCode(qrSlot, {
-        text: addr, width: 140, height: 140,
-        colorDark: '#000', colorLight: '#fff',
-        correctLevel: QRCode.CorrectLevel.M,
+        text: addr, width: 320, height: 320,
+        colorDark: '#000000', colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H,
       });
     }
 

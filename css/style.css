@@ -2,28 +2,40 @@
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 :root {
-  --bg: #0b0d12;
-  --bg2: #0f1117;
-  --surface: #161922;
-  --surface2: #1f2330;
-  --surface3: #2a2f40;
-  --border: #2a2f40;
-  --border2: #353a4d;
+  --bg: #07090e;
+  --bg2: #0c0f16;
+  --surface: #161b27;
+  --surface2: #222838;
+  --surface3: #2e3447;
+  --border: #2a3146;
+  --border2: #3a4159;
   --accent: #f97316;
   --accent2: #fb923c;
-  --accent-glow: rgba(249, 115, 22, 0.15);
-  --text: #e5e7eb;
-  --text2: #9ca3af;
-  --text3: #6b7280;
+  --accent3: #fdba74;
+  --accent-grad: linear-gradient(135deg, #fb923c 0%, #f97316 55%, #ea580c 100%);
+  --accent-glow: rgba(249, 115, 22, 0.18);
+  --accent-glow-strong: rgba(249, 115, 22, 0.35);
+  --text: #f1f3f7;
+  --text2: #a3aabb;
+  --text3: #6b7286;
   --green: #22c55e;
   --red: #ef4444;
   --radius: 16px;
   --radius-sm: 10px;
-  --shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  --shadow-glow: 0 8px 28px -6px rgba(249, 115, 22, 0.35);
 
   /* Safe-area insets for notched phones */
   --sa-top: env(safe-area-inset-top, 0);
   --sa-bot: env(safe-area-inset-bottom, 0);
+}
+
+body {
+  background:
+    radial-gradient(80% 50% at 50% 0%, rgba(249,115,22,0.06), transparent 60%),
+    radial-gradient(60% 40% at 100% 100%, rgba(98,126,234,0.05), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
 }
 
 html, body {
@@ -119,28 +131,37 @@ body {
 
 /* ── Home: total balance card ───────────────────────────────── */
 .balance-hero {
-  margin: 4px 12px 12px;
-  padding: 18px 20px;
+  margin: 4px 12px 14px;
+  padding: 20px 20px 22px;
   background:
-    radial-gradient(120% 100% at 0% 0%, rgba(249,115,22,0.18), transparent 50%),
-    radial-gradient(120% 100% at 100% 100%, rgba(251,146,60,0.10), transparent 50%),
-    linear-gradient(180deg, var(--surface), var(--surface2));
+    radial-gradient(120% 100% at 0% 0%, rgba(249,115,22,0.22), transparent 55%),
+    radial-gradient(120% 100% at 100% 100%, rgba(251,146,60,0.12), transparent 55%),
+    linear-gradient(180deg, #1a1f2d, #131724);
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 20px;
   text-align: center;
   position: relative;
   overflow: hidden;
+  box-shadow: 0 6px 22px -8px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04);
 }
 .balance-hero::before {
   content: '';
   position: absolute; inset: -1px;
-  border-radius: 20px;
+  border-radius: 21px;
   padding: 1px;
-  background: linear-gradient(135deg, rgba(249,115,22,0.4), transparent 40%, transparent 60%, rgba(249,115,22,0.2));
+  background: linear-gradient(135deg, rgba(249,115,22,0.55), transparent 35%, transparent 65%, rgba(251,146,60,0.35));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
+  pointer-events: none;
+}
+.balance-hero::after {
+  content: '';
+  position: absolute;
+  top: -40%; right: -10%;
+  width: 180px; height: 180px;
+  background: radial-gradient(circle, rgba(249,115,22,0.18), transparent 70%);
   pointer-events: none;
 }
 
@@ -238,10 +259,11 @@ body {
   gap: 6px;
 }
 .network-card {
-  background: var(--surface);
+  background: linear-gradient(180deg, var(--surface), #141826);
   border: 1px solid var(--border);
   border-radius: 14px;
   overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
 }
 .network-card .asset-item {
   border-radius: 0;
@@ -249,9 +271,10 @@ body {
 }
 .network-card .asset-item:last-child { border-bottom: none; }
 .network-card .asset-item.selected {
-  background: var(--accent-glow);
+  background: linear-gradient(90deg, var(--accent-glow), transparent 70%);
   border-left: 3px solid var(--accent);
   padding-left: 7px;
+  box-shadow: inset 0 0 0 1px rgba(249,115,22,0.10);
 }
 
 /* Reorder controls (shown in home Edit mode) */
@@ -408,12 +431,29 @@ body {
 
 .balance-card {
   background:
-    radial-gradient(120% 100% at 0% 0%, rgba(249,115,22,0.18), transparent 60%),
-    linear-gradient(180deg, var(--surface), var(--surface2));
+    radial-gradient(120% 100% at 0% 0%, rgba(249,115,22,0.20), transparent 60%),
+    radial-gradient(120% 100% at 100% 100%, rgba(98,126,234,0.06), transparent 60%),
+    linear-gradient(180deg, #1a1f2d, #131724);
   text-align: center;
-  padding: 14px 14px 14px;
-  border-radius: 18px;
+  padding: 16px 14px 14px;
+  border-radius: 20px;
+  position: relative;
+  box-shadow: 0 6px 22px -8px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
+  overflow: hidden;
 }
+.balance-card::before {
+  content: '';
+  position: absolute; inset: -1px;
+  border-radius: 21px;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(249,115,22,0.45), transparent 40%, transparent 60%, rgba(251,146,60,0.25));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.balance-card > * { position: relative; }
 .balance-card .coin-badge {
   display: inline-flex; align-items: center; gap: 6px;
   background: var(--surface2); border-radius: 100px;
@@ -431,20 +471,23 @@ body {
 }
 /* QR shown inside balance card — compact size to fit one screen */
 .balance-card .qr-container {
-  margin: 10px 0 8px;
+  margin: 14px 0 12px;
 }
 .balance-card #qr-output canvas,
 .balance-card #qr-output img,
-.balance-card #qr-canvas {
+.balance-card #qr-canvas,
+.balance-card #wd-qr canvas,
+.balance-card #wd-qr img {
   width: 140px !important;
   height: 140px !important;
-  background: #fff;
-  padding: 6px;
-  border-radius: 10px;
+  display: block;
+  background: transparent;
+  padding: 0;
+  border-radius: 6px;
 }
 .balance-card .address-box {
   margin-top: 0;
-  padding: 8px 12px;
+  padding: 10px 12px;
   font-size: 11px;
 }
 .balance-card .address-box code { font-size: 11px; }
@@ -470,9 +513,21 @@ body {
 }
 .btn:active:not(:disabled) { transform: scale(0.97); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:active:not(:disabled) { background: var(--accent2); }
-.btn-outline { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.btn-primary {
+  background: var(--accent-grad);
+  color: #fff;
+  box-shadow: 0 4px 14px -4px rgba(249,115,22,0.55), inset 0 1px 0 rgba(255,255,255,0.18);
+}
+.btn-primary:active:not(:disabled) {
+  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  box-shadow: 0 2px 8px -2px rgba(249,115,22,0.45);
+}
+.btn-outline {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-outline:active:not(:disabled) { background: var(--surface3); border-color: var(--border2); }
 .btn-sm { padding: 8px 14px; font-size: 13px; border-radius: 10px; }
 .btn-danger { background: var(--red); color: #fff; }
 
@@ -520,29 +575,74 @@ body {
   color: var(--text);
   font-size: 15px;
   outline: none;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
   font-family: inherit;
 }
 .form-group input:focus, .form-group select:focus {
   border-color: var(--accent);
   background: var(--surface);
+  box-shadow: 0 0 0 3px rgba(249,115,22,0.18);
 }
 .form-group input::placeholder { color: var(--text3); }
 
 /* ── Receive / Address ──────────────────────────────────────── */
-.qr-container { display: flex; justify-content: center; margin: 12px 0 14px; }
-#qr-canvas, #qr-output canvas, #qr-output img {
-  border-radius: 14px;
+.qr-container {
+  display: flex;
+  justify-content: center;
+  margin: 14px 0 16px;
+  position: relative;
+}
+
+/* QR frame — white card with gradient ring, soft accent glow,
+   and viewfinder corner brackets at NW + SE for a scanner look. */
+#qr-output, #wd-qr {
+  position: relative;
+  display: inline-block;
+  padding: 12px;
   background: #fff;
-  padding: 8px;
+  border-radius: 16px;
+  box-shadow:
+    0 0 0 1px rgba(249,115,22,0.45),
+    0 0 0 4px rgba(249,115,22,0.10),
+    0 10px 28px -6px rgba(249,115,22,0.30),
+    0 6px 16px rgba(0,0,0,0.45);
+}
+#qr-output::before, #qr-output::after,
+#wd-qr::before, #wd-qr::after {
+  content: '';
+  position: absolute;
+  width: 16px; height: 16px;
+  border: 2.5px solid var(--accent);
+  pointer-events: none;
+}
+#qr-output::before, #wd-qr::before {
+  top: -5px; left: -5px;
+  border-right: 0; border-bottom: 0;
+  border-top-left-radius: 6px;
+}
+#qr-output::after, #wd-qr::after {
+  bottom: -5px; right: -5px;
+  border-left: 0; border-top: 0;
+  border-bottom-right-radius: 6px;
+}
+
+#qr-canvas, #qr-output canvas, #qr-output img,
+#wd-qr canvas, #wd-qr img {
+  display: block;
+  border-radius: 6px;
+  background: #fff;
+  padding: 0;
 }
 
 .address-box {
   display: flex; align-items: center; gap: 10px;
   background: var(--surface2);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px 14px;
+  transition: border-color 0.15s, background 0.15s;
 }
+.address-box:hover { border-color: var(--border2); }
 .address-box code {
   flex: 1;
   font-size: 12px;
@@ -580,9 +680,9 @@ body {
   bottom: 0; left: 0; right: 0;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  background: rgba(15, 17, 23, 0.92);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
+  background: rgba(10, 13, 20, 0.88);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  backdrop-filter: blur(24px) saturate(140%);
   border-top: 1px solid var(--border);
   padding-bottom: var(--sa-bot);
   z-index: 50;
@@ -592,17 +692,29 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 6px 0 5px;
+  padding: 8px 0 6px;
   cursor: pointer;
   color: var(--text3);
-  transition: color 0.15s;
+  transition: color 0.15s, transform 0.1s;
   font-size: 10px;
   font-weight: 500;
   background: none;
   border: none;
   font-family: inherit;
+  position: relative;
 }
 .nav-item.active { color: var(--accent); }
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 28px; height: 2px;
+  background: var(--accent-grad);
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 0 12px rgba(249,115,22,0.6);
+}
+.nav-item:active { transform: scale(0.94); }
 .nav-item svg { width: 20px; height: 20px; }
 
 /* ── Setup screen ───────────────────────────────────────────── */
