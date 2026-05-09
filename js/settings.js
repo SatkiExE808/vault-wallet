@@ -186,6 +186,13 @@
               // Verify round-trip
               const back = await decryptMnemonic(newEncrypted, p1);
               if (back !== state.mnemonic) throw new Error('Verification failed');
+              // Re-encrypt the saved passphrase blob with the new password
+              // so unlock can still auto-apply it. Without this, the blob
+              // would be unreadable and unlock would fall back to prompting.
+              if (state.passphrase) {
+                const newPp = await encryptMnemonic(state.passphrase, p1);
+                localStorage.setItem('vault.passphrase_blob', newPp);
+              }
               // Disable biometric (old encrypted password is now stale)
               if (localStorage.getItem('biometric_enabled')) {
                 localStorage.removeItem('biometric_enabled');
@@ -633,6 +640,9 @@
           try { await verifyAuth('Disable passphrase protection'); }
           catch { return; }
           window.setPassphraseEnabled(false);
+          // Clear the saved blob so a future re-enable doesn't quietly
+          // reuse the old passphrase.
+          localStorage.removeItem('vault.passphrase_blob');
           refreshPassphraseLabel();
           close();
           toast('Passphrase disabled — relock and unlock to switch back to the standard wallet');
@@ -675,25 +685,36 @@
         const p2 = root.querySelector('#pp2').value;
         if (!p1) { err.textContent = 'Passphrase cannot be empty'; return; }
         if (p1 !== p2) { err.textContent = "Passphrases don't match"; return; }
-        try { await verifyAuth('Enable passphrase protection'); }
-        catch { return; }
-        // Apply immediately: set the in-memory passphrase, flip the flag,
-        // re-derive every address. The user keeps the same session — they
-        // just see new addresses now (and their old/no-passphrase funds
-        // are no longer reachable until they turn it off).
-        window.setPassphraseEnabled(true);
-        state.passphrase = p1;
-        close();
-        toast('Re-deriving addresses with passphrase…');
-        try {
-          if (typeof loadWallet === 'function') {
-            await loadWallet();
-          }
-          refreshPassphraseLabel();
-          toast('✓ Passphrase enabled — these are now your protected addresses');
-        } catch (e) {
-          toast('Re-derive failed: ' + (e.message || e));
-        }
+        // Use passwordModal so we get the actual password and can encrypt
+        // the passphrase blob with it. This way unlock can decrypt the
+        // saved passphrase without prompting again every time.
+        passwordModal({
+          title: '🔒 Confirm with password',
+          message: 'Enter your wallet password to enable passphrase protection.',
+          onSubmit: async (pwd, closePwModal) => {
+            closePwModal();
+            window.setPassphraseEnabled(true);
+            state.passphrase = p1;
+            try {
+              const encPp = await encryptMnemonic(p1, pwd);
+              localStorage.setItem('vault.passphrase_blob', encPp);
+            } catch (e) {
+              toast('Failed to save passphrase: ' + (e.message || e));
+              return;
+            }
+            close();
+            toast('Re-deriving addresses with passphrase…');
+            try {
+              if (typeof loadWallet === 'function') {
+                await loadWallet();
+              }
+              refreshPassphraseLabel();
+              toast('✓ Passphrase enabled — these are now your protected addresses');
+            } catch (e) {
+              toast('Re-derive failed: ' + (e.message || e));
+            }
+          },
+        });
       };
       root.querySelector('#pp-cancel').onclick = close;
     });
