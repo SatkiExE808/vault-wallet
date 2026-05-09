@@ -658,6 +658,44 @@ body {
 }
 .form-group input::placeholder { color: var(--text3); }
 
+/* Segmented control — replaces native <select> for dark-theme consistency.
+   Native pickers on iOS ignore CSS, so we render selects as button rows. */
+.seg-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 14px;
+}
+.seg-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+  white-space: nowrap;
+  text-align: center;
+}
+.seg-btn:not(.active):active {
+  background: var(--surface3);
+  transform: scale(0.97);
+}
+.seg-btn.active {
+  background: var(--accent-grad);
+  color: #fff;
+  box-shadow: 0 2px 8px -3px rgba(249,115,22,0.55);
+}
+
 /* ── Receive / Address ──────────────────────────────────────── */
 .qr-container {
   display: flex;

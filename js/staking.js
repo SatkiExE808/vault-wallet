@@ -17,6 +17,30 @@ const Staking = (() => {
     return { root, close };
   }
 
+  // Render a segmented-control replacement for <select>. Pass an array of
+  // { value, label }. Returns { el, getValue, onChange }.
+  function segmentedControl(id, options, defaultValue) {
+    const html = `<div class="seg-control" id="${id}">${
+      options.map(o => `<button type="button" class="seg-btn${o.value === defaultValue ? ' active' : ''}" data-val="${o.value}">${o.label}</button>`).join('')
+    }</div>`;
+    return html;
+  }
+  function wireSeg(rootEl, id, onChange) {
+    const el = rootEl.querySelector(`#${id}`);
+    el.querySelectorAll('.seg-btn').forEach(btn => {
+      btn.onclick = e => {
+        e.preventDefault();
+        if (btn.classList.contains('active')) return;
+        el.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        if (onChange) onChange(btn.dataset.val);
+      };
+    });
+    return {
+      getValue: () => el.querySelector('.seg-btn.active')?.dataset.val,
+    };
+  }
+
   // ── Solana flow ──────────────────────────────────────────────────────
   // Top-level chooser: liquid (JupSOL, set-and-forget) or native (pick a validator).
   async function openSolModal() {
@@ -63,10 +87,10 @@ const Staking = (() => {
       </div>
       <div class="form-group">
         <label>Action</label>
-        <select id="stk-jup-action">
-          <option value="stake">Stake SOL → JupSOL</option>
-          <option value="unstake">Unstake JupSOL → SOL</option>
-        </select>
+        ${segmentedControl('stk-jup-action', [
+          { value: 'stake',   label: 'Stake → JupSOL' },
+          { value: 'unstake', label: 'Unstake → SOL' },
+        ], 'stake')}
       </div>
       <div class="form-group">
         <label id="stk-jup-amount-label">Amount (SOL)</label>
@@ -91,16 +115,15 @@ const Staking = (() => {
         `;
       });
 
-    const actionSel = root.querySelector('#stk-jup-action');
     const amountLabel = root.querySelector('#stk-jup-amount-label');
-    actionSel.onchange = () => {
-      amountLabel.textContent = actionSel.value === 'stake' ? 'Amount (SOL)' : 'Amount (JupSOL)';
-    };
+    const actionSeg = wireSeg(root, 'stk-jup-action', v => {
+      amountLabel.textContent = v === 'stake' ? 'Amount (SOL)' : 'Amount (JupSOL)';
+    });
 
     const errDiv = root.querySelector('#stk-jup-err');
     root.querySelector('#stk-jup-do').onclick = async () => {
       errDiv.textContent = '';
-      const action = actionSel.value;
+      const action = actionSeg.getValue();
       const amt = root.querySelector('#stk-jup-amount').value.trim();
       if (!amt || parseFloat(amt) <= 0) { errDiv.textContent = 'Enter a valid amount'; return; }
       const verb = action === 'stake' ? 'stake' : 'unstake';
@@ -236,20 +259,20 @@ const Staking = (() => {
       </div>
       <div class="form-group">
         <label>Action</label>
-        <select id="stk-action">
-          <option value="freeze">Stake (freeze)</option>
-          <option value="unfreeze">Unstake (unfreeze)</option>
-          <option value="withdraw">Withdraw expired</option>
-          <option value="vote">Vote for SR</option>
-          <option value="claim">Claim rewards</option>
-        </select>
+        ${segmentedControl('stk-action', [
+          { value: 'freeze',   label: 'Stake' },
+          { value: 'unfreeze', label: 'Unstake' },
+          { value: 'withdraw', label: 'Withdraw' },
+          { value: 'vote',     label: 'Vote' },
+          { value: 'claim',    label: 'Rewards' },
+        ], 'freeze')}
       </div>
       <div class="form-group" id="stk-resource-group">
         <label>Resource</label>
-        <select id="stk-resource">
-          <option value="ENERGY">ENERGY (recommended)</option>
-          <option value="BANDWIDTH">BANDWIDTH</option>
-        </select>
+        ${segmentedControl('stk-resource', [
+          { value: 'ENERGY',    label: 'ENERGY (recommended)' },
+          { value: 'BANDWIDTH', label: 'BANDWIDTH' },
+        ], 'ENERGY')}
       </div>
       <div class="form-group" id="stk-amount-group">
         <label>Amount (TRX)</label>
@@ -300,17 +323,15 @@ const Staking = (() => {
         ${votesHtml}
       `;
       // Now that we know rewards, refresh the claim panel if currently shown
-      if (actionSel.value === 'claim') updateActionView();
+      if (actionSeg && actionSeg.getValue() === 'claim') updateActionView('claim');
     });
 
-    const actionSel = root.querySelector('#stk-action');
     const amountGroup   = root.querySelector('#stk-amount-group');
     const resourceGroup = root.querySelector('#stk-resource-group');
     const voteGroup     = root.querySelector('#stk-vote-group');
     const tpGroup       = root.querySelector('#stk-tp-group');
 
-    function updateActionView() {
-      const v = actionSel.value;
+    function updateActionView(v) {
       amountGroup.style.display   = (v === 'freeze' || v === 'unfreeze') ? '' : 'none';
       resourceGroup.style.display = (v === 'freeze' || v === 'unfreeze') ? '' : 'none';
       voteGroup.style.display     = v === 'vote' ? '' : 'none';
@@ -324,17 +345,18 @@ const Staking = (() => {
         claimInfo.style.display = 'none';
       }
     }
-    actionSel.onchange = updateActionView;
-    updateActionView();
+    const actionSeg = wireSeg(root, 'stk-action', updateActionView);
+    const resourceSeg = wireSeg(root, 'stk-resource');
+    updateActionView(actionSeg.getValue());
 
     const errDiv = root.querySelector('#stk-err');
     root.querySelector('#stk-do').onclick = async () => {
       errDiv.textContent = '';
-      const action = actionSel.value;
+      const action = actionSeg.getValue();
       const btn = root.querySelector('#stk-do');
 
       if (action === 'freeze' || action === 'unfreeze') {
-        const resource = root.querySelector('#stk-resource').value;
+        const resource = resourceSeg.getValue();
         const amt = root.querySelector('#stk-amount').value.trim();
         if (!amt || parseFloat(amt) <= 0) { errDiv.textContent = 'Enter a valid amount'; return; }
         const verb = action === 'freeze' ? 'stake' : 'unstake';
