@@ -134,5 +134,113 @@ const SolanaWallet = (() => {
     } catch { return []; }
   }
 
-  return { deriveAddress, getBalance, sendSOL, getHistory };
+  // ── Native staking ───────────────────────────────────────────────────
+  // Stake account size is 200 bytes; rent reserve sits on top of the staked
+  // amount and is recoverable on full withdraw.
+  const STAKE_SPACE = 200;
+
+  async function getStakeRent() {
+    return await rpcCall('getMinimumBalanceForRentExemption', [STAKE_SPACE]);
+  }
+
+  // Lists stake accounts where the user is the withdraw authority.
+  async function getStakeAccounts(address) {
+    try {
+      // The withdraw authority lives at offset 44 inside the parsed stake account
+      // data; using getProgramAccounts with a memcmp filter is the standard pattern.
+      const res = await rpcCall('getProgramAccounts', [
+        solanaWeb3.StakeProgram.programId.toBase58(),
+        {
+          encoding: 'jsonParsed',
+          filters: [
+            { memcmp: { offset: 44, bytes: address } },
+          ],
+        },
+      ]);
+      const epoch = await rpcCall('getEpochInfo', []);
+      const currentEpoch = epoch?.epoch ?? 0;
+      return (res || []).map(a => {
+        const info     = a.account?.data?.parsed?.info || {};
+        const stake    = info.stake?.delegation;
+        const lamports = a.account?.lamports ?? 0;
+        const sol      = (lamports / solanaWeb3.LAMPORTS_PER_SOL).toFixed(6);
+        const validator = stake?.voter || null;
+        let state = 'inactive';
+        if (stake) {
+          const act = Number(stake.activationEpoch);
+          const deact = Number(stake.deactivationEpoch);
+          if (deact <= currentEpoch && deact !== Number.MAX_SAFE_INTEGER) state = 'inactive';
+          else if (act > currentEpoch) state = 'activating';
+          else if (deact === Number.MAX_SAFE_INTEGER || deact > currentEpoch) state = 'active';
+          if (deact <= currentEpoch && state !== 'inactive') state = 'deactivating';
+        }
+        return { pubkey: a.pubkey, lamports, sol, validator, state };
+      });
+    } catch { return []; }
+  }
+
+  async function stakeSOL(mnemonic, validatorVoteAddress, amount) {
+    const kp = await deriveKeypair(mnemonic);
+    const conn = new solanaWeb3.Connection(RPCS[0], 'confirmed');
+    const lamports = Math.floor(Number(amount) * solanaWeb3.LAMPORTS_PER_SOL);
+    if (!Number.isFinite(lamports) || lamports <= 0) throw new Error('Invalid amount');
+    const rent = await getStakeRent();
+    const stakeAccount = solanaWeb3.Keypair.generate();
+    const totalLamports = lamports + rent;
+    const tx = new solanaWeb3.Transaction()
+      .add(solanaWeb3.StakeProgram.createAccount({
+        fromPubkey: kp.publicKey,
+        stakePubkey: stakeAccount.publicKey,
+        authorized: new solanaWeb3.Authorized(kp.publicKey, kp.publicKey),
+        lockup: new solanaWeb3.Lockup(0, 0, kp.publicKey),
+        lamports: totalLamports,
+      }))
+      .add(solanaWeb3.StakeProgram.delegate({
+        stakePubkey: stakeAccount.publicKey,
+        authorizedPubkey: kp.publicKey,
+        votePubkey: new solanaWeb3.PublicKey(validatorVoteAddress),
+      }));
+    tx.feePayer = kp.publicKey;
+    tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+    tx.sign(kp, stakeAccount);
+    return await conn.sendRawTransaction(tx.serialize());
+  }
+
+  async function deactivateStake(mnemonic, stakeAccountAddress) {
+    const kp = await deriveKeypair(mnemonic);
+    const conn = new solanaWeb3.Connection(RPCS[0], 'confirmed');
+    const tx = new solanaWeb3.Transaction().add(
+      solanaWeb3.StakeProgram.deactivate({
+        stakePubkey: new solanaWeb3.PublicKey(stakeAccountAddress),
+        authorizedPubkey: kp.publicKey,
+      })
+    );
+    tx.feePayer = kp.publicKey;
+    tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+    tx.sign(kp);
+    return await conn.sendRawTransaction(tx.serialize());
+  }
+
+  async function withdrawStake(mnemonic, stakeAccountAddress) {
+    const kp = await deriveKeypair(mnemonic);
+    const conn = new solanaWeb3.Connection(RPCS[0], 'confirmed');
+    const stakePk = new solanaWeb3.PublicKey(stakeAccountAddress);
+    const accInfo = await conn.getAccountInfo(stakePk);
+    if (!accInfo) throw new Error('Stake account not found');
+    const tx = new solanaWeb3.Transaction().add(
+      solanaWeb3.StakeProgram.withdraw({
+        stakePubkey: stakePk,
+        authorizedPubkey: kp.publicKey,
+        toPubkey: kp.publicKey,
+        lamports: accInfo.lamports,
+      })
+    );
+    tx.feePayer = kp.publicKey;
+    tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+    tx.sign(kp);
+    return await conn.sendRawTransaction(tx.serialize());
+  }
+
+  return { deriveAddress, getBalance, sendSOL, getHistory,
+           getStakeAccounts, stakeSOL, deactivateStake, withdrawStake };
 })();
