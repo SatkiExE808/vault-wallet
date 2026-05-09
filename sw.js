@@ -1,4 +1,4 @@
-const CACHE = 'vault-v40';
+const CACHE = 'vault-v41';
 const LOCAL_FILES = [
   './index.html',
   './manifest.json',
@@ -6,6 +6,7 @@ const LOCAL_FILES = [
   './js/app.js',
   './js/home.js',
   './js/settings.js',
+  './js/tx-progress.js',
   './js/coins/utxo.js',
   './js/coins/bitcoin.js',
   './js/coins/litecoin.js',
