@@ -976,17 +976,36 @@ function timeAgo(ms) {
   return new Date(ms).toLocaleDateString();
 }
 
+// Opens a URL in the device's external browser.
+// In Capacitor WebView, target="_blank" doesn't always launch the system
+// browser, so we explicitly use window.open with the _system target which
+// Capacitor's intent handler picks up.
+function openExternal(url) {
+  if (!url) return;
+  try {
+    if (window.Capacitor?.Plugins?.Browser?.open) {
+      window.Capacitor.Plugins.Browser.open({ url });
+      return;
+    }
+  } catch {}
+  // Fallback: plain window.open. _system is a Cordova convention; modern
+  // browsers ignore it and just open in a new tab/window.
+  const w = window.open(url, '_system');
+  if (!w) window.open(url, '_blank');
+}
+window.openExternal = openExternal;
+
 async function updateHistoryTab() {
   const coin = COINS.find(c => c.id === state.active);
   const list = document.getElementById('history-list');
   if (!list) return;
 
   if (!coin.history) {
-    const link = coin.explorerAddr
-      ? `<a href="${coin.explorerAddr(state.addresses[coin.id])}" target="_blank" rel="noopener"
-           style="color:#f97316;text-decoration:none">View address on explorer ↗</a>` : '';
+    const url = coin.explorerAddr ? coin.explorerAddr(state.addresses[coin.id]) : '';
     list.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:12px 0">
-      History not available for ${coin.name}.<br>${link}</p>`;
+      History not available for ${coin.name}.</p>
+      ${url ? `<button class="btn btn-outline btn-sm explorer-btn" data-url="${url}" style="margin-top:6px">View address on explorer ↗</button>` : ''}`;
+    list.querySelectorAll('.explorer-btn').forEach(btn => btn.onclick = () => openExternal(btn.dataset.url));
     return;
   }
 
@@ -995,13 +1014,13 @@ async function updateHistoryTab() {
     const addr = state.addresses[coin.id];
     const txs  = await coin.history(addr);
     if (!txs || txs.length === 0) {
-      const link = coin.explorerAddr
-        ? `<a href="${coin.explorerAddr(addr)}" target="_blank" rel="noopener"
-             style="color:#f97316;text-decoration:none;display:block;margin-top:6px">View on explorer ↗</a>` : '';
-      list.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:12px 0">No transactions found.${link}</p>`;
+      const url = coin.explorerAddr ? coin.explorerAddr(addr) : '';
+      list.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:12px 0">No transactions found.</p>
+        ${url ? `<button class="btn btn-outline btn-sm explorer-btn" data-url="${url}" style="margin-top:6px">View on explorer ↗</button>` : ''}`;
+      list.querySelectorAll('.explorer-btn').forEach(btn => btn.onclick = () => openExternal(btn.dataset.url));
       return;
     }
-    list.innerHTML = txs.map(tx => {
+    list.innerHTML = txs.map((tx, i) => {
       const send = tx.type === 'send';
       const time = tx.time ? timeAgo(tx.time) : 'Pending';
       const st   = tx.status || (tx.confirmed ? 'ok' : 'pending');
@@ -1014,6 +1033,7 @@ async function updateHistoryTab() {
              background:rgba(234,179,8,0.15);color:#eab308">Pending</span>`
         : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600;
              background:rgba(34,197,94,0.15);color:#22c55e">Completed</span>`;
+      const url = tx.explorerUrl || '';
       return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
         <div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
           justify-content:center;font-size:15px;
@@ -1027,21 +1047,26 @@ async function updateHistoryTab() {
             <span>${time}</span>${badge}
           </div>
         </div>
-        ${tx.explorerUrl
-          ? `<a href="${tx.explorerUrl}" target="_blank" rel="noopener"
-               title="View on explorer"
-               style="color:var(--text2);font-size:20px;text-decoration:none;flex-shrink:0;padding:4px;
-                      line-height:1;transition:color 0.15s"
-               onmouseover="this.style.color='#f97316'" onmouseout="this.style.color='var(--text2)'">↗</a>`
+        ${url
+          ? `<button class="btn btn-outline btn-sm explorer-btn" data-url="${url}"
+               style="padding:6px 10px;font-size:12px;flex-shrink:0">
+               Explorer ↗
+             </button>`
           : ''}
       </div>`;
     }).join('');
+
+    // Wire explorer buttons. window.open with _system target works in Capacitor;
+    // also set href fallback so it works in plain browser.
+    list.querySelectorAll('.explorer-btn').forEach(btn => {
+      btn.onclick = () => openExternal(btn.dataset.url);
+    });
   } catch(e) {
-    const link = coin.explorerAddr
-      ? `<a href="${coin.explorerAddr(state.addresses[coin.id])}" target="_blank" rel="noopener"
-           style="color:#f97316;text-decoration:none;display:block;margin-top:6px">View on explorer ↗</a>` : '';
+    const url = coin.explorerAddr ? coin.explorerAddr(state.addresses[coin.id]) : '';
     list.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:12px 0">
-      Could not load history: ${e.message}<br>${link}</p>`;
+      Could not load history: ${e.message}</p>
+      ${url ? `<button class="btn btn-outline btn-sm explorer-btn" data-url="${url}" style="margin-top:6px">View on explorer ↗</button>` : ''}`;
+    list.querySelectorAll('.explorer-btn').forEach(btn => btn.onclick = () => openExternal(btn.dataset.url));
   }
 }
 

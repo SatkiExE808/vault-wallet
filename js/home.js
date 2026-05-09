@@ -128,14 +128,8 @@
         moveCategory(btn.dataset.cat, btn.dataset.move);
       };
     });
-    if (!editMode) {
-      list.querySelectorAll('.asset-item').forEach(el => {
-        el.onclick = () => {
-          selectCoin(el.dataset.coin);
-          showView('coin');
-        };
-      });
-    }
+    // Home asset list is display-only — no navigation on tap.
+    // To send/receive, the user goes to the Wallets tab.
   }
 
   function updateTotalBalance() {
