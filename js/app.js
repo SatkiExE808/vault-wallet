@@ -111,7 +111,7 @@ const COINS = [
   // ── Ethereum ──
   {
     id: 'ETH', name: 'Ethereum', symbol: 'ETH', category: 'Ethereum',
-    icon: `${CDN}/eth.svg`, color: '#627eea', networkClass: 'network-erc20',
+    icon: `${CDN}/eth.svg`, color: '#627eea', networkLabel: 'Mainnet', networkClass: 'network-erc20',
     derive:  m    => EthereumWallet.deriveAddress(m),
     balance: addr => EthereumWallet.getETHBalance(addr),
     canSend: true, defaultEnabled: true,
