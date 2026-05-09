@@ -199,12 +199,21 @@
     $('wd-send').onclick = () => {
       selectCoin(coin.id);
       showView('coin');
-      document.querySelector('.tab[data-tab="send"]')?.click();
+      // Open the Send action panel directly (more reliable than .click() on the tab)
+      if (typeof window.openAction === 'function') {
+        window.openAction('send');
+      } else {
+        document.querySelector('.tab[data-tab="send"]')?.click();
+      }
     };
     $('wd-history').onclick = () => {
       selectCoin(coin.id);
       showView('coin');
-      document.querySelector('.tab[data-tab="history"]')?.click();
+      if (typeof window.openAction === 'function') {
+        window.openAction('history');
+      } else {
+        document.querySelector('.tab[data-tab="history"]')?.click();
+      }
     };
 
     // Highlight selected coin in the picker list
