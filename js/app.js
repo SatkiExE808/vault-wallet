@@ -1146,6 +1146,18 @@ document.getElementById('do-send-btn').onclick = async () => {
   // Show full address in confirm dialog so a clipboard-poisoning swap is visible
   const confirmMsg = `Send ${amt} ${coin.symbol}?\n\nTo:\n${to}\n${feeText ? '\nFee: ' + feeText : ''}`;
   if (!confirm(confirmMsg)) return;
+
+  // Require biometric / password before broadcasting — guards against shoulder-surfing
+  // and accidental sends if someone grabs the unlocked phone.
+  if (typeof verifyAuth === 'function') {
+    try {
+      await verifyAuth(`Confirm sending ${amt} ${coin.symbol}`);
+    } catch {
+      toast('Send cancelled');
+      return;
+    }
+  }
+
   const btn = document.getElementById('do-send-btn');
   btn.disabled = true; btn.textContent = 'Sending…';
   try {
@@ -1406,9 +1418,17 @@ setInterval(() => { if (state.mnemonic) refreshBalances(); }, 60000);
 setInterval(() => { if (state.mnemonic) fetchPrices(); }, 300000);
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
-(async () => {
+// Wait for all scripts to load (settings.js, home.js) before deciding which
+// screen to show — otherwise window.biometricEnabled isn't defined yet and
+// the biometric button is missing from the unlock screen.
+function bootApp() {
   const legacy = localStorage.getItem('wallet_mnemonic');
   if (legacy) { showMigratePassword(legacy); return; }
   const encrypted = localStorage.getItem('wallet_encrypted');
   if (encrypted) { showUnlock(); } else { showSetup(); }
-})();
+}
+if (document.readyState === 'complete') {
+  bootApp();
+} else {
+  window.addEventListener('load', bootApp);
+}

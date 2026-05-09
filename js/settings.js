@@ -14,6 +14,57 @@
     return { root, close };
   }
 
+  // Verify user identity via biometric (if enabled) or password.
+  // Returns a Promise that resolves on success and rejects on cancel/fail.
+  // Used to gate sensitive actions like sending crypto.
+  function verifyAuth(reason = 'Verify it\'s you') {
+    return new Promise((resolve, reject) => {
+      const tryBiometric = async () => {
+        if (!window.biometricEnabled?.()) return false;
+        try {
+          const method = localStorage.getItem('biometric_method') || 'webauthn';
+          if (method === 'native') {
+            const native = getNativePlugin();
+            if (!native) return false;
+            await native.internalAuthenticate({
+              reason,
+              cancelTitle: 'Use password',
+              androidTitle: 'Vault Wallet',
+              androidSubtitle: reason,
+            });
+            return true;
+          } else {
+            const credIdB64 = localStorage.getItem('biometric_credential_id');
+            if (!credIdB64 || !window.PublicKeyCredential) return false;
+            const credIdBytes = Uint8Array.from(atob(credIdB64), c => c.charCodeAt(0));
+            await navigator.credentials.get({
+              publicKey: {
+                challenge: crypto.getRandomValues(new Uint8Array(32)),
+                allowCredentials: [{ type: 'public-key', id: credIdBytes }],
+                userVerification: 'required',
+                timeout: 60000,
+              },
+            });
+            return true;
+          }
+        } catch { return false; }
+      };
+
+      tryBiometric().then(ok => {
+        if (ok) { resolve(); return; }
+        // Fall back to password
+        passwordModal({
+          title: '🔒 Confirm with password',
+          message: reason,
+          onSubmit: async (_pwd, close) => { close(); resolve(); },
+        });
+        // If user closes the modal without submitting we never resolve nor reject.
+        // Caller should handle via the user just abandoning the flow.
+      });
+    });
+  }
+  window.verifyAuth = verifyAuth;
+
   function passwordModal({ title, message, onSubmit }) {
     return modal(`
       <h2>${title}</h2>
@@ -229,14 +280,63 @@
     });
   }
 
-  function disableBiometric() {
-    if (!confirm('Disable biometric unlock?')) return;
+  function clearBiometric() {
     localStorage.removeItem('biometric_enabled');
     localStorage.removeItem('biometric_credential_id');
     localStorage.removeItem('biometric_blob');
     localStorage.removeItem('biometric_method');
     toast('Biometric disabled');
     renderSettingsTab();
+  }
+
+  async function disableBiometric() {
+    // Require either biometric verification or password to disable, so a
+    // shoulder-surfer who grabs the unlocked phone can't disable the lock.
+    const method = localStorage.getItem('biometric_method') || 'webauthn';
+    if (method === 'native') {
+      const native = getNativePlugin();
+      if (native) {
+        try {
+          await native.internalAuthenticate({
+            reason: 'Disable biometric unlock',
+            cancelTitle: 'Cancel',
+            androidTitle: 'Disable Biometric',
+            androidSubtitle: 'Verify it\'s you to turn off biometric unlock',
+          });
+          clearBiometric();
+          return;
+        } catch (e) {
+          toast('Biometric verification cancelled');
+          return;
+        }
+      }
+    } else {
+      // WebAuthn — try the same credential we registered
+      const credIdB64 = localStorage.getItem('biometric_credential_id');
+      if (credIdB64 && window.PublicKeyCredential) {
+        try {
+          const credIdBytes = Uint8Array.from(atob(credIdB64), c => c.charCodeAt(0));
+          await navigator.credentials.get({
+            publicKey: {
+              challenge: crypto.getRandomValues(new Uint8Array(32)),
+              allowCredentials: [{ type: 'public-key', id: credIdBytes }],
+              userVerification: 'required',
+              timeout: 60000,
+            },
+          });
+          clearBiometric();
+          return;
+        } catch (e) {
+          // Fall through to password
+        }
+      }
+    }
+    // Fallback: password verification
+    passwordModal({
+      title: 'Disable Biometric Unlock',
+      message: 'Enter your password to confirm.',
+      onSubmit: async (_pwd, close) => { close(); clearBiometric(); },
+    });
   }
 
   // ── Unlock with biometric ──────────────────────────────────
