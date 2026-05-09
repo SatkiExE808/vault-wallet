@@ -495,6 +495,11 @@
     if (!el) return;
     el.textContent = window.TwoFA?.isEnabled?.() ? 'On ›' : 'Off ›';
   }
+  function refreshPassphraseLabel() {
+    const el = document.getElementById('menu-passphrase-value');
+    if (!el) return;
+    el.textContent = window.isPassphraseEnabled?.() ? 'On ›' : 'Off ›';
+  }
 
   // ── Two-Factor (TOTP) setup ────────────────────────────────
   function show2FAFlow() {
@@ -598,6 +603,93 @@
     });
   }
 
+  // ── BIP39 passphrase ("25th word") setup ───────────────────
+  // Adds a second secret on top of the seed phrase. Without it, the
+  // seed phrase derives a different (empty) wallet. The passphrase is
+  // never stored — only a flag that we need to prompt for it on unlock.
+  function showPassphraseFlow() {
+    const enabled = window.isPassphraseEnabled?.();
+    if (enabled) {
+      modal(`
+        <h2>🔑 Passphrase Active</h2>
+        <p>Your wallet currently requires a BIP39 passphrase ("25th word") on every unlock. Without it, the wrong addresses are derived and your funds will not appear.</p>
+        <div class="warning-box" style="margin-top:8px">⚠ Disabling does NOT move your funds. After turning it off, the next unlock will open the standard (no-passphrase) wallet — your passphrase-protected funds will only show again if you re-enable it.</div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" id="pp-close">Close</button>
+          <button class="btn btn-danger" id="pp-disable">Turn Off</button>
+        </div>
+      `, (root, close) => {
+        root.querySelector('#pp-close').onclick = close;
+        root.querySelector('#pp-disable').onclick = async () => {
+          try { await verifyAuth('Disable passphrase protection'); }
+          catch { return; }
+          window.setPassphraseEnabled(false);
+          refreshPassphraseLabel();
+          close();
+          toast('Passphrase disabled — relock and unlock to switch back to the standard wallet');
+        };
+      });
+      return;
+    }
+
+    // Not yet enabled — explain, collect a passphrase, confirm, warn.
+    modal(`
+      <h2>🔑 Set up Passphrase</h2>
+      <p style="font-size:13px">Adds a second secret on top of your 12-word seed. Even if your recovery phrase leaks, your funds stay safe without the passphrase.</p>
+      <div class="warning-box" style="margin-top:8px">
+        ⚠ <strong>There is NO recovery</strong> for the passphrase. If you forget it, your funds are gone forever. Write it down with your seed.
+      </div>
+      <div class="form-group" style="margin-top:14px">
+        <label>Passphrase (your "25th word")</label>
+        <input type="password" id="pp1" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Pick something memorable but secret">
+      </div>
+      <div class="form-group">
+        <label>Confirm passphrase</label>
+        <input type="password" id="pp2" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Repeat it exactly">
+      </div>
+      <label style="display:flex;align-items:center;gap:10px;font-size:13px;margin:8px 0;cursor:pointer">
+        <input type="checkbox" id="pp-ack"> I understand that losing this passphrase means losing access to these funds forever.
+      </label>
+      <div id="pp-err" style="color:var(--red);font-size:13px;min-height:18px"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="pp-cancel">Cancel</button>
+        <button class="btn btn-primary" id="pp-enable" disabled>Enable</button>
+      </div>
+    `, (root, close) => {
+      const ack = root.querySelector('#pp-ack');
+      const ok  = root.querySelector('#pp-enable');
+      ack.onchange = () => { ok.disabled = !ack.checked; };
+      ok.onclick = async () => {
+        const err = root.querySelector('#pp-err');
+        err.textContent = '';
+        const p1 = root.querySelector('#pp1').value;
+        const p2 = root.querySelector('#pp2').value;
+        if (!p1) { err.textContent = 'Passphrase cannot be empty'; return; }
+        if (p1 !== p2) { err.textContent = "Passphrases don't match"; return; }
+        try { await verifyAuth('Enable passphrase protection'); }
+        catch { return; }
+        // Apply immediately: set the in-memory passphrase, flip the flag,
+        // re-derive every address. The user keeps the same session — they
+        // just see new addresses now (and their old/no-passphrase funds
+        // are no longer reachable until they turn it off).
+        window.setPassphraseEnabled(true);
+        state.passphrase = p1;
+        close();
+        toast('Re-deriving addresses with passphrase…');
+        try {
+          if (typeof loadWallet === 'function') {
+            await loadWallet();
+          }
+          refreshPassphraseLabel();
+          toast('✓ Passphrase enabled — these are now your protected addresses');
+        } catch (e) {
+          toast('Re-derive failed: ' + (e.message || e));
+        }
+      };
+      root.querySelector('#pp-cancel').onclick = close;
+    });
+  }
+
   function showCurrencyPicker() {
     const current = (window.getDisplayCurrency?.() || 'usd');
     modal(`
@@ -633,6 +725,7 @@
     $('menu-manage-assets')?.addEventListener('click', showManageAssets);
     $('menu-currency')?.addEventListener('click', showCurrencyPicker);
     $('menu-2fa')?.addEventListener('click', show2FAFlow);
+    $('menu-passphrase')?.addEventListener('click', showPassphraseFlow);
     $('menu-check-update')?.addEventListener('click', checkForUpdates);
     $('menu-lock-wallet')?.addEventListener('click', () => $('lock-btn')?.click());
     $('menu-biometric')?.addEventListener('click', () => {
@@ -641,6 +734,7 @@
     });
     refreshCurrencyLabel();
     refresh2FALabel();
+    refreshPassphraseLabel();
     renderSettingsTab();
   }
 

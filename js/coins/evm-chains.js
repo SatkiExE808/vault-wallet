@@ -68,12 +68,15 @@ const EVMChains = (() => {
     throw lastErr || new Error(`Network error: cannot reach ${chainKey} RPC`);
   }
 
+  // BIP39 passphrase ("25th word"), pulled from app state at derive time.
+  function _pp() { return (typeof window !== 'undefined' && window.getPassphrase) ? window.getPassphrase() : ''; }
+
   async function deriveAddress(mnemonic) {
-    return ethers.Wallet.fromPhrase(mnemonic).address;
+    return ethers.Wallet.fromPhrase(mnemonic, _pp()).address;
   }
 
   async function _privateKey(mnemonic) {
-    return ethers.Wallet.fromPhrase(mnemonic).privateKey;
+    return ethers.Wallet.fromPhrase(mnemonic, _pp()).privateKey;
   }
 
   async function getNative(address, chainKey) {

@@ -766,12 +766,35 @@ function getActiveCoins() { return COINS.filter(c => enabledCoins.has(c.id)); }
 // ── App state ─────────────────────────────────────────────────────────────────
 const state = {
   mnemonic: null,
+  // BIP39 passphrase ("25th word"). Held in memory only after unlock; never
+  // persisted. Empty string = standard wallet (no passphrase). Coin modules
+  // read this via window.getPassphrase() when deriving addresses or signing.
+  passphrase: '',
   addresses: {},
   balances: {},
   extras: {},
   prices: {},
   active: 'BTC',
 };
+
+// Global helper so every coin module can read the current passphrase
+// without each one needing to take a new parameter. Returns '' when no
+// passphrase is set, which matches the standard BIP39 derivation.
+window.getPassphrase = function() {
+  return (state && state.passphrase) || '';
+};
+
+// Whether the user has opted in to passphrase protection. We DON'T store
+// the passphrase itself — only whether to prompt for one on unlock.
+function isPassphraseEnabled() {
+  return localStorage.getItem('vault.passphrase_enabled') === 'true';
+}
+function setPassphraseEnabled(on) {
+  if (on) localStorage.setItem('vault.passphrase_enabled', 'true');
+  else    localStorage.removeItem('vault.passphrase_enabled');
+}
+window.isPassphraseEnabled = isPassphraseEnabled;
+window.setPassphraseEnabled = setPassphraseEnabled;
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
 function showSetup() {
@@ -925,10 +948,18 @@ function showUnlock() {
     btn.disabled = true; btn.textContent = 'Unlocking…';
     try {
       const mnemonic = await decryptMnemonic(localStorage.getItem('wallet_encrypted'), pwd);
-      state.mnemonic = mnemonic;
       // Opportunistic upgrade of v1 blobs (300k iterations) to v2 (600k).
       // Fire-and-forget — never block the unlock flow on an upgrade attempt.
       maybeUpgradeEncryption(mnemonic, pwd).catch(() => {});
+      // If passphrase protection is on, ask for the 25th word before deriving.
+      // Wrong passphrase silently produces a different (empty) wallet — this is
+      // a BIP39 design feature ("plausible deniability"), not a bug.
+      if (isPassphraseEnabled()) {
+        showPassphrasePrompt(mnemonic);
+        return;
+      }
+      state.passphrase = '';
+      state.mnemonic = mnemonic;
       await loadWallet();
     } catch {
       err.style.display = 'block';
@@ -943,8 +974,13 @@ function showUnlock() {
     try {
       const pwd = await window.unlockWithBiometric();
       const mnemonic = await decryptMnemonic(localStorage.getItem('wallet_encrypted'), pwd);
-      state.mnemonic = mnemonic;
       maybeUpgradeEncryption(mnemonic, pwd).catch(() => {});
+      if (isPassphraseEnabled()) {
+        showPassphrasePrompt(mnemonic);
+        return;
+      }
+      state.passphrase = '';
+      state.mnemonic = mnemonic;
       await loadWallet();
     } catch (e) {
       btn.disabled = false; btn.textContent = 'Unlock with Face ID / Biometric';
@@ -958,6 +994,35 @@ function showUnlock() {
       localStorage.clear(); location.reload();
     }
   };
+}
+
+// BIP39 passphrase prompt shown after a successful password unlock when the
+// user has opted in to passphrase protection. Wrong passphrase = different
+// addresses (BIP39 spec, not an error), so we can't validate it before
+// deriving — the user has to recognize their own addresses on the home view.
+function showPassphrasePrompt(mnemonic) {
+  const box = document.getElementById('setup-box');
+  box.innerHTML = `
+    <h1>Enter Passphrase</h1>
+    <p>Your wallet is protected by a BIP39 passphrase ("25th word"). Enter it to unlock the correct addresses.</p>
+    <div class="warning-box" style="margin-top:8px">⚠ A wrong passphrase silently opens a different wallet — your real funds will not appear. Leave blank to use the standard wallet.</div>
+    <div class="form-group" style="margin-top:12px">
+      <label>Passphrase</label>
+      <input type="password" id="pp-input" placeholder="Your 25th word" autocomplete="off" autocapitalize="off" spellcheck="false">
+    </div>
+    <button class="btn btn-primary" id="btn-pp-ok" style="width:100%;padding:14px">Unlock</button>
+    <button class="btn btn-outline btn-sm" id="btn-pp-cancel" style="width:100%;margin-top:10px">Cancel</button>`;
+  const submit = async () => {
+    state.passphrase = document.getElementById('pp-input').value || '';
+    state.mnemonic = mnemonic;
+    const btn = document.getElementById('btn-pp-ok');
+    btn.disabled = true; btn.textContent = 'Deriving…';
+    await loadWallet();
+  };
+  document.getElementById('pp-input').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  document.getElementById('btn-pp-ok').onclick = submit;
+  document.getElementById('btn-pp-cancel').onclick = showUnlock;
+  setTimeout(() => document.getElementById('pp-input')?.focus(), 50);
 }
 
 function showMigratePassword(mnemonic) {

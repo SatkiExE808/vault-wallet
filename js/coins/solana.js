@@ -21,7 +21,9 @@ const SolanaWallet = (() => {
 
   // SLIP-0010 ed25519 derivation. All path segments must be hardened.
   async function deriveEd25519Seed(mnemonic) {
-    const seedHex = ethers.Mnemonic.fromPhrase(mnemonic).computeSeed();
+    // 2nd arg is the BIP39 passphrase ("25th word"); '' = standard derivation.
+    const passphrase = (typeof window !== 'undefined' && window.getPassphrase) ? window.getPassphrase() : '';
+    const seedHex = ethers.Mnemonic.fromPhrase(mnemonic, passphrase).computeSeed();
     const seed = hexToBytes(seedHex);
     const masterKey = new TextEncoder().encode('ed25519 seed');
     let i = await hmacSha512(masterKey, seed);
