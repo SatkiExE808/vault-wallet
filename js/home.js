@@ -196,25 +196,104 @@
 
     // Wire actions
     $('wd-copy').onclick = () => navigator.clipboard.writeText(addr).then(() => toast('Address copied'));
-    $('wd-send').onclick = () => {
+
+    // Send toggle — shows the inline send form right in the wallet view
+    $('wd-send-toggle').onclick = () => {
+      const form = $('wd-send-form');
+      const visible = form.style.display !== 'none';
+      if (visible) {
+        form.style.display = 'none';
+        clearFeeTimer();
+        return;
+      }
+      form.style.display = 'block';
+      // Sync state: select this coin so app.js helpers (validateAddress, send, fee) work
       selectCoin(coin.id);
-      showView('coin');
-      // Open the Send action panel directly (more reliable than .click() on the tab)
-      if (typeof window.openAction === 'function') {
-        window.openAction('send');
+      $('wd-send-symbol').textContent = coin.symbol;
+      $('wd-send-to').value = '';
+      $('wd-send-amount').value = '';
+
+      const isEvm = !!EVM_GAS[coin.id];
+      const feeRow = $('wd-send-fee-row');
+      const feeDisplay = $('wd-send-fee-display');
+      if (isEvm) {
+        feeRow.style.display = 'block';
+        feeDisplay.textContent = 'Estimating…';
+        delete feeRow.dataset.fee;
+        const coinId = coin.id;
+        estimateEvmFee(coinId).then(info => {
+          feeDisplay.textContent = `~${info.fee} ${info.symbol} · ${info.gwei} gwei`;
+          feeRow.dataset.fee = info.fee;
+          feeRow.dataset.feeId = info.feeId;
+          feeRow.dataset.rollup = info.isRollup ? '1' : '0';
+          // Auto-fill max for native EVM coins
+          const bal = parseFloat(state.balances[coinId] || '0');
+          if (bal > 0 && !EVM_GAS[coinId].token) {
+            const buffer = info.isRollup ? 1.5 : 1.2;
+            const max = Math.max(0, bal - parseFloat(info.fee) * buffer);
+            if (max > 0) $('wd-send-amount').value = max.toFixed(6);
+          }
+        }).catch(() => { feeDisplay.textContent = 'Unable to estimate'; });
       } else {
-        document.querySelector('.tab[data-tab="send"]')?.click();
+        feeRow.style.display = 'none';
+      }
+
+      // Scroll the form into view
+      requestAnimationFrame(() => $('wd-send-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+    };
+
+    // Max button
+    $('wd-send-max').onclick = () => {
+      const bal = parseFloat(state.balances[coin.id] || '0');
+      if (bal <= 0) return;
+      const feeRow = $('wd-send-fee-row');
+      const isEvm = !!EVM_GAS[coin.id];
+      if (isEvm && !EVM_GAS[coin.id].token && feeRow.dataset.fee) {
+        const isRollup = feeRow.dataset.rollup === '1';
+        const buffer = isRollup ? 1.5 : 1.2;
+        const fee = parseFloat(feeRow.dataset.fee) * buffer;
+        $('wd-send-amount').value = Math.max(0, bal - fee).toFixed(6);
+      } else {
+        $('wd-send-amount').value = bal.toString();
       }
     };
+
+    // Inline send — reuses the same coin.send + verifyAuth path as the coin detail
+    $('wd-do-send').onclick = async () => {
+      const to = $('wd-send-to').value.trim();
+      const amt = $('wd-send-amount').value.trim();
+      if (!to || !amt || parseFloat(amt) <= 0) { toast('Enter a valid address and amount.'); return; }
+      const addrErr = validateAddress(to, coin.id);
+      if (addrErr) { toast(addrErr); return; }
+      if (!confirm(`Send ${amt} ${coin.symbol}?\n\nTo:\n${to}`)) return;
+      if (typeof verifyAuth === 'function') {
+        try { await verifyAuth(`Confirm sending ${amt} ${coin.symbol}`); }
+        catch { toast('Send cancelled'); return; }
+      }
+      const btn = $('wd-do-send');
+      btn.disabled = true; btn.textContent = 'Sending…';
+      try {
+        const txid = await coin.send(state.mnemonic, to, amt);
+        toast(`Sent! TX: ${String(txid).slice(0, 20)}…`);
+        $('wd-send-to').value = '';
+        $('wd-send-amount').value = '';
+        $('wd-send-form').style.display = 'none';
+        setTimeout(refreshBalances, 4000);
+      } catch (e) {
+        toast(`Error: ${e.message || 'Transaction failed.'}`);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Send';
+      }
+    };
+
     $('wd-history').onclick = () => {
       selectCoin(coin.id);
       showView('coin');
-      if (typeof window.openAction === 'function') {
-        window.openAction('history');
-      } else {
-        document.querySelector('.tab[data-tab="history"]')?.click();
-      }
+      if (typeof window.openAction === 'function') window.openAction('history');
     };
+
+    // Hide the send form when switching coins
+    $('wd-send-form').style.display = 'none';
 
     // Highlight selected coin in the picker list
     document.querySelectorAll('#wallet-asset-list .asset-item').forEach(el => {
