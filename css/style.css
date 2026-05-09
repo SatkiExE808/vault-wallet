@@ -588,6 +588,19 @@ body {
 .btn-sm { padding: 8px 14px; font-size: 13px; border-radius: 10px; }
 .btn-danger { background: var(--red); color: #fff; }
 
+/* Buttons that pair an SVG icon with a text label (Send / History) */
+.btn-with-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.btn-with-icon svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
 /* ── Tabs ───────────────────────────────────────────────────── */
 .tabs {
   display: grid;
@@ -887,10 +900,16 @@ body {
 .settings-menu-item .menu-icon {
   width: 36px; height: 36px;
   border-radius: 50%;
-  background: var(--surface2);
+  background: linear-gradient(135deg, rgba(249,115,22,0.18), rgba(249,115,22,0.06));
+  border: 1px solid rgba(249,115,22,0.20);
+  color: var(--accent2);
   display: flex; align-items: center; justify-content: center;
   font-size: 16px;
   flex-shrink: 0;
+}
+.settings-menu-item .menu-icon svg {
+  width: 18px;
+  height: 18px;
 }
 .settings-menu-item .menu-label { flex: 1; }
 .settings-menu-item .menu-arrow {
