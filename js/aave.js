@@ -137,6 +137,13 @@ const AaveEarn = (() => {
     const amt = ethers.parseUnits(String(amount), cfg.dec);
     const allowance = await underlying.allowance(wallet.address, POOLS[cfg.chain]);
     if (allowance < amt) {
+      // USDT contracts on Ethereum and BSC reject approve(spender, X) when
+      // the existing allowance is non-zero — requires reset to 0 first.
+      // Other ERC-20s allow direct overwrite, but resetting first is harmless.
+      if (allowance > 0n) {
+        const resetTx = await underlying.approve(POOLS[cfg.chain], 0);
+        await resetTx.wait();
+      }
       const approveTx = await underlying.approve(POOLS[cfg.chain], ethers.MaxUint256);
       await approveTx.wait();
     }

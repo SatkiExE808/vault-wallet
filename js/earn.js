@@ -2,6 +2,8 @@
 // Mirrors the staking modal pattern. Exposes window.openEarnModal(coinId).
 const Earn = (() => {
   function showModal(html) {
+    // Singleton guard — see js/staking.js.
+    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
     const root = document.createElement('div');
     root.className = 'modal-backdrop';
     root.innerHTML = `<div class="modal">${html}</div>`;

@@ -8,6 +8,9 @@ const Staking = (() => {
   }
 
   function showModal(html) {
+    // Singleton guard: tearing down any existing modal so rapid taps on
+    // Stake / Earn don't stack orphan backdrops in the DOM.
+    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
     const root = document.createElement('div');
     root.className = 'modal-backdrop';
     root.innerHTML = `<div class="modal">${html}</div>`;
@@ -405,7 +408,7 @@ const Staking = (() => {
         try {
           const txid = await TronWallet.voteForSR(state.mnemonic, srAddr, count);
           toast(`Voted! TX: ${String(txid).slice(0, 20)}…`);
-          close();
+          close(); setTimeout(refreshBalances, 4000);
         } catch (e) { errDiv.textContent = e.message || 'Vote failed'; btn.disabled = false; btn.textContent = 'Confirm'; }
         return;
       }

@@ -53,7 +53,7 @@ const EthereumWallet = (() => {
   async function sendETH(privateKey, toAddress, amount) {
     const wallet = new ethers.Wallet(privateKey);
     const [nonceHex, gasPriceHex] = await Promise.all([
-      rpcCall('eth_getTransactionCount', [wallet.address, 'latest']),
+      rpcCall('eth_getTransactionCount', [wallet.address, 'pending']),
       rpcCall('eth_gasPrice', []),
     ]);
     const tx = ethers.Transaction.from({
@@ -71,7 +71,7 @@ const EthereumWallet = (() => {
       'transfer', [toAddress, ethers.parseUnits(String(amount), t.decimals)]
     );
     const [nonceHex, gasPriceHex] = await Promise.all([
-      rpcCall('eth_getTransactionCount', [wallet.address, 'latest']),
+      rpcCall('eth_getTransactionCount', [wallet.address, 'pending']),
       rpcCall('eth_gasPrice', []),
     ]);
     const tx = ethers.Transaction.from({
@@ -114,7 +114,7 @@ const EthereumWallet = (() => {
     const gasCost = gasPrice * gasLimit;
     if (balWei <= gasCost) throw new Error('Balance too low to cover gas fee');
     const valueWei = balWei - gasCost;
-    const nonceHex = await rpcCall('eth_getTransactionCount', [legacyAddr, 'latest']);
+    const nonceHex = await rpcCall('eth_getTransactionCount', [legacyAddr, 'pending']);
     const wallet = new ethers.Wallet(privateKey);
     const tx = ethers.Transaction.from({
       to: currentAddr, value: valueWei,

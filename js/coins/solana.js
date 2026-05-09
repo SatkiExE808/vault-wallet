@@ -165,14 +165,22 @@ const SolanaWallet = (() => {
         const lamports = a.account?.lamports ?? 0;
         const sol      = (lamports / solanaWeb3.LAMPORTS_PER_SOL).toFixed(6);
         const validator = stake?.voter || null;
+        // Compare epochs as BigInt to safely handle Solana's u64::MAX
+        // sentinel ('18446744073709551615'), which loses precision when
+        // coerced through Number().
         let state = 'inactive';
         if (stake) {
-          const act = Number(stake.activationEpoch);
-          const deact = Number(stake.deactivationEpoch);
-          if (deact <= currentEpoch && deact !== Number.MAX_SAFE_INTEGER) state = 'inactive';
-          else if (act > currentEpoch) state = 'activating';
-          else if (deact === Number.MAX_SAFE_INTEGER || deact > currentEpoch) state = 'active';
-          if (deact <= currentEpoch && state !== 'inactive') state = 'deactivating';
+          const tip = BigInt(currentEpoch);
+          const act = BigInt(stake.activationEpoch ?? '0');
+          const deact = BigInt(stake.deactivationEpoch ?? '0');
+          const NEVER = (1n << 64n) - 1n;
+          const isDeactivated = deact !== NEVER && deact < tip;
+          const isDeactivating = deact !== NEVER && deact === tip;
+          const isActivating = act > tip;
+          if      (isDeactivated)  state = 'inactive';
+          else if (isDeactivating) state = 'deactivating';
+          else if (isActivating)   state = 'activating';
+          else                     state = 'active';
         }
         return { pubkey: a.pubkey, lamports, sol, validator, state };
       });

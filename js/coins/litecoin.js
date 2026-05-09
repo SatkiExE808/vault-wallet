@@ -3,7 +3,7 @@ const LitecoinWallet = (() => {
 
   async function getBalance(address) {
     try {
-      const r = await fetch(`${API}/address/${address}`);
+      const r = await fetch(`${API}/address/${address}`, { signal: AbortSignal.timeout(10000) });
       const d = await r.json();
       return ((d.chain_stats.funded_txo_sum - d.chain_stats.spent_txo_sum) / 1e8).toFixed(8);
     } catch { return '0.00000000'; }
