@@ -475,27 +475,29 @@
 
   // ── Display Currency picker ────────────────────────────────
   const CURRENCY_OPTIONS = [
-    { code: 'usd', label: 'US Dollar' },
-    { code: 'eur', label: 'Euro' },
-    { code: 'gbp', label: 'British Pound' },
-    { code: 'jpy', label: 'Japanese Yen' },
-    { code: 'cny', label: 'Chinese Yuan' },
-    { code: 'inr', label: 'Indian Rupee' },
-    { code: 'idr', label: 'Indonesian Rupiah' },
-    { code: 'php', label: 'Philippine Peso' },
-    { code: 'myr', label: 'Malaysian Ringgit' },
-    { code: 'sgd', label: 'Singapore Dollar' },
-    { code: 'thb', label: 'Thai Baht' },
-    { code: 'aud', label: 'Australian Dollar' },
-    { code: 'cad', label: 'Canadian Dollar' },
-    { code: 'krw', label: 'Korean Won' },
+    { code: 'usd', label: 'US Dollar',         flag: '🇺🇸' },
+    { code: 'eur', label: 'Euro',              flag: '🇪🇺' },
+    { code: 'gbp', label: 'British Pound',     flag: '🇬🇧' },
+    { code: 'jpy', label: 'Japanese Yen',      flag: '🇯🇵' },
+    { code: 'cny', label: 'Chinese Yuan',      flag: '🇨🇳' },
+    { code: 'inr', label: 'Indian Rupee',      flag: '🇮🇳' },
+    { code: 'idr', label: 'Indonesian Rupiah', flag: '🇮🇩' },
+    { code: 'php', label: 'Philippine Peso',   flag: '🇵🇭' },
+    { code: 'myr', label: 'Malaysian Ringgit', flag: '🇲🇾' },
+    { code: 'sgd', label: 'Singapore Dollar',  flag: '🇸🇬' },
+    { code: 'thb', label: 'Thai Baht',         flag: '🇹🇭' },
+    { code: 'aud', label: 'Australian Dollar', flag: '🇦🇺' },
+    { code: 'cad', label: 'Canadian Dollar',   flag: '🇨🇦' },
+    { code: 'krw', label: 'Korean Won',        flag: '🇰🇷' },
   ];
 
   function refreshCurrencyLabel() {
     const el = document.getElementById('menu-currency-value');
     if (!el) return;
-    const ccy = (window.getDisplayCurrency?.() || 'usd').toUpperCase();
-    el.textContent = `${ccy} ›`;
+    const code = (window.getDisplayCurrency?.() || 'usd');
+    const opt  = CURRENCY_OPTIONS.find(o => o.code === code);
+    const flag = opt?.flag || '';
+    el.textContent = `${flag} ${code.toUpperCase()} ›`;
   }
   function refresh2FALabel() {
     const el = document.getElementById('menu-2fa-value');
@@ -710,6 +712,7 @@
       const list = root.querySelector('#ccy-list');
       list.innerHTML = CURRENCY_OPTIONS.map(o => `
         <button class="settings-menu-item ccy-row" data-code="${o.code}" style="background:transparent">
+          <span style="font-size:22px;line-height:1;margin-right:12px;flex-shrink:0">${o.flag}</span>
           <span class="menu-label">${o.label} <span style="color:var(--text3);font-size:12px;margin-left:4px">${o.code.toUpperCase()}</span></span>
           ${o.code === current ? '<span style="color:var(--accent);font-size:18px">✓</span>' : '<span></span>'}
         </button>
