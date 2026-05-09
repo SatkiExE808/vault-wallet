@@ -129,13 +129,22 @@
   }
 
   // ── Biometric (Face ID / Touch ID / fingerprint via WebAuthn) ─
-  function biometricSupported() {
-    return !!(window.PublicKeyCredential && navigator.credentials);
+  async function biometricSupported() {
+    if (!window.PublicKeyCredential || !navigator.credentials || !navigator.credentials.create) return { ok: false, reason: 'WebAuthn API not available in this browser' };
+    if (!window.isSecureContext)                           return { ok: false, reason: 'Page must be loaded over HTTPS' };
+    try {
+      const platformAvailable = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+      if (!platformAvailable) return { ok: false, reason: 'No Face ID / fingerprint configured on this device' };
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, reason: 'Platform authenticator check failed: ' + (e.message || e.name) };
+    }
   }
 
   async function enableBiometric() {
-    if (!biometricSupported()) {
-      toast('Biometric not supported on this device/browser');
+    const support = await biometricSupported();
+    if (!support.ok) {
+      toast(support.reason);
       return;
     }
     passwordModal({
