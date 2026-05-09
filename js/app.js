@@ -1324,6 +1324,11 @@ document.getElementById('do-send-btn').onclick = async () => {
     const txid = await coin.send(state.mnemonic, to, amt);
     toast(`Sent! TX: ${String(txid).slice(0, 20)}…`);
     if (typeof TxProgress !== 'undefined') TxProgress.track(coin.id, txid, 'send', amt);
+    if (typeof Inbox !== 'undefined') Inbox.add({
+      type: 'send',
+      title: `${coin.symbol} withdrawal complete`,
+      subtitle: `Sent ${amt} ${coin.symbol}`,
+    });
     document.getElementById('send-to').value = '';
     document.getElementById('send-amount').value = '';
     setTimeout(refreshBalances, 4000);

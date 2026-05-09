@@ -84,8 +84,9 @@
     if (name === 'wallet')   $('wallet-view').classList.add('active');
     if (name === 'coin')     $('main').classList.add('active');
     if (name === 'settings') $('settings-view').classList.add('active');
-    // Map view → bottom nav highlight
-    const navMap = { home: 'home', wallet: 'wallet', coin: 'wallet', settings: 'settings' };
+    if (name === 'inbox')    $('inbox-view').classList.add('active');
+    // Map view → bottom nav highlight (inbox keeps the home tab lit)
+    const navMap = { home: 'home', wallet: 'wallet', coin: 'wallet', settings: 'settings', inbox: 'home' };
     document.querySelectorAll('.nav-item').forEach(n => {
       n.classList.toggle('active', n.dataset.nav === navMap[name]);
     });
@@ -330,6 +331,11 @@
         const txid = await coin.send(state.mnemonic, to, amt);
         toast(`Sent! TX: ${String(txid).slice(0, 20)}…`);
         if (typeof TxProgress !== 'undefined') TxProgress.track(coin.id, txid, 'send', amt);
+        Inbox?.add({
+          type: 'send',
+          title: `${coin.symbol} withdrawal complete`,
+          subtitle: `Sent ${amt} ${coin.symbol}`,
+        });
         $('wd-send-to').value = '';
         $('wd-send-amount').value = '';
         $('wd-send-form').style.display = 'none';

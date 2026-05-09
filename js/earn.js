@@ -119,6 +119,15 @@ const Earn = (() => {
           ? await AaveEarn.supply(state.mnemonic, coinId, amt)
           : await AaveEarn.withdraw(state.mnemonic, coinId, isMax ? 'max' : amt);
         toast(`Done! TX: ${String(txHash).slice(0, 20)}…`);
+        if (typeof Inbox !== 'undefined') Inbox.add({
+          type: 'earn',
+          title: action === 'deposit'
+            ? `${symbol} deposited to Aave`
+            : `${symbol} withdrawn from Aave`,
+          subtitle: action === 'deposit'
+            ? 'Now earning yield on Aave v3'
+            : 'Returned to liquid balance',
+        });
         close();
         setTimeout(refreshBalances, 5000);
       } catch (e) {
