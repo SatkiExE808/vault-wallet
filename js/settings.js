@@ -112,12 +112,12 @@
           <div class="warning-box">
             ⚠️ Anyone with these 12 words can take all your funds. Never share them, never type them on a website. Write them on paper and store offline.
           </div>
+          <button class="btn btn-primary btn-sm" id="seed-copy" style="width:100%;margin-bottom:12px">⧉ Copy all 12 words</button>
           <div class="seed-display">
             ${words.map((w, i) => `<div class="seed-word"><span>${i + 1}</span>${w}</div>`).join('')}
           </div>
-          <button class="btn btn-outline btn-sm" id="seed-copy" style="width:100%;margin-top:12px">⧉ Copy all words</button>
-          <div class="modal-actions" style="grid-template-columns:1fr;margin-top:10px">
-            <button class="btn btn-primary" id="seed-done">I've saved it — close</button>
+          <div class="modal-actions" style="grid-template-columns:1fr;margin-top:14px">
+            <button class="btn btn-outline" id="seed-done">I've saved it — close</button>
           </div>
         `, (root, close) => {
           root.querySelector('#seed-done').onclick = close;
