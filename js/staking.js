@@ -18,7 +18,109 @@ const Staking = (() => {
   }
 
   // ── Solana flow ──────────────────────────────────────────────────────
+  // Top-level chooser: liquid (JupSOL, set-and-forget) or native (pick a validator).
   async function openSolModal() {
+    const addr = state.addresses['SOL'];
+    if (!addr) { toast('SOL wallet not loaded'); return; }
+    const liquidBal = state.balances['SOL'] ?? '…';
+
+    const { root, close } = showModal(`
+      <h2>Stake SOL</h2>
+      <p>Choose how you want to stake.</p>
+      <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px">
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Liquid balance</span><span><b>${liquidBal} SOL</b></span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">
+        <button class="btn btn-primary" id="stk-pick-liquid" style="padding:14px;text-align:left">
+          <div style="font-size:15px;font-weight:700">Liquid stake (JupSOL)</div>
+          <div style="font-size:12px;font-weight:400;opacity:0.92;margin-top:2px">Set-and-forget · auto-managed validators · ~7% APY · instant exit via swap</div>
+        </button>
+        <button class="btn btn-outline" id="stk-pick-native" style="padding:14px;text-align:left">
+          <div style="font-size:15px;font-weight:700">Native stake</div>
+          <div style="font-size:12px;font-weight:400;opacity:0.85;margin-top:2px">Pick your own validator · no smart contract · ~3-day unbond</div>
+        </button>
+      </div>
+      <div class="modal-actions" style="grid-template-columns:1fr">
+        <button class="btn btn-outline" id="stk-cancel">Close</button>
+      </div>
+    `);
+    root.querySelector('#stk-cancel').onclick = close;
+    root.querySelector('#stk-pick-liquid').onclick = () => { close(); openSolLiquidModal(); };
+    root.querySelector('#stk-pick-native').onclick = () => { close(); openSolNativeModal(); };
+  }
+
+  async function openSolLiquidModal() {
+    const addr = state.addresses['SOL'];
+    if (!addr) { toast('SOL wallet not loaded'); return; }
+    const liquidBal = state.balances['SOL'] ?? '…';
+
+    const { root, close } = showModal(`
+      <h2>Liquid Stake (JupSOL)</h2>
+      <p>Deposit SOL → receive JupSOL, a tradeable receipt token whose value grows vs SOL as rewards accrue. Unstake any time by swapping back.</p>
+      <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px">
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Liquid SOL</span><span><b>${liquidBal}</b></span></div>
+        <div id="stk-jup-info" style="margin-top:6px;color:var(--text2)">Loading JupSOL position…</div>
+      </div>
+      <div class="form-group">
+        <label>Action</label>
+        <select id="stk-jup-action">
+          <option value="stake">Stake SOL → JupSOL</option>
+          <option value="unstake">Unstake JupSOL → SOL</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label id="stk-jup-amount-label">Amount (SOL)</label>
+        <input id="stk-jup-amount" type="number" step="any" min="0" placeholder="0.0">
+      </div>
+      <div id="stk-jup-err" style="color:var(--red);font-size:13px;min-height:18px;margin-bottom:8px"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="stk-jup-back">Back</button>
+        <button class="btn btn-primary" id="stk-jup-do">Confirm</button>
+      </div>
+    `);
+    root.querySelector('#stk-jup-back').onclick = () => { close(); openSolModal(); };
+
+    const infoDiv = root.querySelector('#stk-jup-info');
+    Promise.all([SolanaWallet.getJupSolBalance(addr), SolanaWallet.getJupSolRate()])
+      .then(([bal, rate]) => {
+        const balNum = Number(bal);
+        const sol = rate ? (balNum * rate).toFixed(6) : null;
+        infoDiv.innerHTML = `
+          <div>JupSOL balance: <b>${bal}</b>${sol ? ` (≈ ${sol} SOL)` : ''}</div>
+          ${rate ? `<div>Rate: 1 JupSOL ≈ ${rate.toFixed(6)} SOL</div>` : ''}
+        `;
+      });
+
+    const actionSel = root.querySelector('#stk-jup-action');
+    const amountLabel = root.querySelector('#stk-jup-amount-label');
+    actionSel.onchange = () => {
+      amountLabel.textContent = actionSel.value === 'stake' ? 'Amount (SOL)' : 'Amount (JupSOL)';
+    };
+
+    const errDiv = root.querySelector('#stk-jup-err');
+    root.querySelector('#stk-jup-do').onclick = async () => {
+      errDiv.textContent = '';
+      const action = actionSel.value;
+      const amt = root.querySelector('#stk-jup-amount').value.trim();
+      if (!amt || parseFloat(amt) <= 0) { errDiv.textContent = 'Enter a valid amount'; return; }
+      const verb = action === 'stake' ? 'stake' : 'unstake';
+      if (!confirm(`Confirm ${verb} ${amt} ${action === 'stake' ? 'SOL' : 'JupSOL'}?`)) return;
+      if (typeof verifyAuth === 'function') {
+        try { await verifyAuth(`Confirm ${verb}`); } catch { toast('Cancelled'); return; }
+      }
+      const btn = root.querySelector('#stk-jup-do');
+      btn.disabled = true; btn.textContent = `${verb === 'stake' ? 'Staking' : 'Unstaking'}…`;
+      try {
+        const sig = action === 'stake'
+          ? await SolanaWallet.liquidStakeJupSol(state.mnemonic, amt)
+          : await SolanaWallet.liquidUnstakeJupSol(state.mnemonic, amt);
+        toast(`Done! TX: ${String(sig).slice(0, 20)}…`);
+        close(); setTimeout(refreshBalances, 4000);
+      } catch (e) { errDiv.textContent = e.message || 'Transaction failed'; btn.disabled = false; btn.textContent = 'Confirm'; }
+    };
+  }
+
+  async function openSolNativeModal() {
     const addr = state.addresses['SOL'];
     if (!addr) { toast('SOL wallet not loaded'); return; }
     const liquidBal = state.balances['SOL'] ?? '…';
@@ -44,11 +146,11 @@ const Staking = (() => {
       </div>
       <div id="stk-err" style="color:var(--red);font-size:13px;min-height:18px;margin-bottom:8px"></div>
       <div class="modal-actions">
-        <button class="btn btn-outline" id="stk-close">Close</button>
+        <button class="btn btn-outline" id="stk-close">Back</button>
         <button class="btn btn-primary" id="stk-do">Stake</button>
       </div>
     `);
-    root.querySelector('#stk-close').onclick = close;
+    root.querySelector('#stk-close').onclick = () => { close(); openSolModal(); };
 
     const listDiv = root.querySelector('#stake-list');
     SolanaWallet.getStakeAccounts(addr).then(accs => {
