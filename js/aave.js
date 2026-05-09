@@ -149,5 +149,39 @@ const AaveEarn = (() => {
     return tx.hash;
   }
 
-  return { isSupported, getInfo, supply, withdraw };
+  // ── Bulk APY refresh (powers the per-row APY badges) ──────────────
+  // Keeps a module-level cache and mirrors it onto state.aaveApy so
+  // the home renderer can read it synchronously at draw time.
+  const APY_REFRESH_MS = 5 * 60 * 1000;
+  let _apyTimer = null;
+  let _apyCache = {};
+
+  async function refreshAllApys() {
+    const ids = Object.keys(SUPPORTED);
+    await Promise.allSettled(ids.map(async id => {
+      const cfg = SUPPORTED[id];
+      try {
+        const { liquidityRate } = await readReserve(cfg.chain, cfg.underlying);
+        const SECONDS_PER_YEAR = 31_536_000;
+        const ratePerSec = Number(liquidityRate) / 1e27;
+        const apy = ((1 + ratePerSec) ** SECONDS_PER_YEAR - 1) * 100;
+        _apyCache[id] = apy.toFixed(2);
+      } catch { /* leave previous value */ }
+    }));
+    if (typeof state !== 'undefined') state.aaveApy = { ..._apyCache };
+    if (typeof updateHome === 'function') updateHome();
+  }
+
+  function startApyRefresh() {
+    if (_apyTimer) return;
+    refreshAllApys().catch(() => {});
+    _apyTimer = setInterval(() => refreshAllApys().catch(() => {}), APY_REFRESH_MS);
+  }
+  function stopApyRefresh() {
+    clearInterval(_apyTimer); _apyTimer = null;
+  }
+  function getApy(coinId) { return _apyCache[coinId] || null; }
+
+  return { isSupported, getInfo, supply, withdraw,
+           startApyRefresh, stopApyRefresh, refreshAllApys, getApy };
 })();

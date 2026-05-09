@@ -4,6 +4,14 @@
 (() => {
   const $ = id => document.getElementById(id);
 
+  // Small green pill showing live Aave supply APY for stablecoins.
+  // Returns '' when no APY is known for the coin yet.
+  function renderApyBadge(coinId) {
+    const apy = state.aaveApy?.[coinId];
+    if (!apy || parseFloat(apy) <= 0) return '';
+    return `<span class="apy-badge" title="Aave supply APY">${apy}%</span>`;
+  }
+
   // Render progress pills (incoming/outgoing confirmation status) for a coin.
   // Returns '' when no active txs are tracked.
   function renderProgressPills(coinId) {
@@ -128,7 +136,7 @@
               <img src="${coin.icon}" alt="" onerror="this.style.display='none'">
             </div>
             <div class="asset-meta">
-              <div class="asset-name">${coin.name} ${badge}</div>
+              <div class="asset-name">${coin.name} ${badge} ${renderApyBadge(coin.id)}</div>
               <div class="asset-symbol">${coin.symbol}</div>
               ${progress}
             </div>
@@ -423,7 +431,7 @@
               <img src="${coin.icon}" alt="" onerror="this.style.display='none'">
             </div>
             <div class="asset-meta">
-              <div class="asset-name">${coin.name} ${badge}</div>
+              <div class="asset-name">${coin.name} ${badge} ${renderApyBadge(coin.id)}</div>
               <div class="asset-symbol">${coin.symbol}</div>
               ${progress}
             </div>
