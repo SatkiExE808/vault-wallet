@@ -115,10 +115,17 @@
           <div class="seed-display">
             ${words.map((w, i) => `<div class="seed-word"><span>${i + 1}</span>${w}</div>`).join('')}
           </div>
-          <div class="modal-actions" style="grid-template-columns:1fr">
+          <button class="btn btn-outline btn-sm" id="seed-copy" style="width:100%;margin-top:12px">⧉ Copy all words</button>
+          <div class="modal-actions" style="grid-template-columns:1fr;margin-top:10px">
             <button class="btn btn-primary" id="seed-done">I've saved it — close</button>
           </div>
-        `, (root, close) => { root.querySelector('#seed-done').onclick = close; });
+        `, (root, close) => {
+          root.querySelector('#seed-done').onclick = close;
+          root.querySelector('#seed-copy').onclick = async () => {
+            try { await navigator.clipboard.writeText(words.join(' ')); toast('Recovery phrase copied — clear your clipboard after saving it'); }
+            catch { toast('Copy failed'); }
+          };
+        });
       },
     });
   }
