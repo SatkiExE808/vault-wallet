@@ -912,6 +912,12 @@ async function loadWallet() {
 
 // ── Balance refresh ───────────────────────────────────────────────────────────
 async function refreshBalances() {
+  // Snapshot pre-refresh balances so we can detect any increases and
+  // surface them as 'deposit received' inbox notifications. The first
+  // refresh after unlock starts from an empty snapshot, so we skip
+  // notifications on initial load (we don't know the delta from history).
+  const prev = { ...state.balances };
+  const knownPrev = Object.keys(prev).length > 0;
   await Promise.all(getActiveCoins().map(async coin => {
     const addr = state.addresses[coin.id];
     if (!addr) return;
@@ -921,6 +927,26 @@ async function refreshBalances() {
     updateSidebarBal(coin.id);
     if (state.active === coin.id) updateBalCard();
   }));
+  // After the refresh finishes, check for balance increases per coin.
+  if (knownPrev && typeof Inbox !== 'undefined') {
+    for (const coin of getActiveCoins()) {
+      if (prev[coin.id] === undefined) continue; // newly enabled coin
+      const oldBal = parseFloat(prev[coin.id]);
+      const newBal = parseFloat(state.balances[coin.id]);
+      if (!Number.isFinite(oldBal) || !Number.isFinite(newBal)) continue;
+      const delta = newBal - oldBal;
+      // Tiny threshold to ignore noise (e.g., a token's last decimal flickering).
+      const threshold = (coin.symbol === 'BTC' || coin.symbol === 'ETH') ? 1e-7 : 0.0001;
+      if (delta > threshold) {
+        const dec = (coin.symbol === 'USDT' || coin.symbol === 'USDC' || coin.symbol === 'DAI') ? 2 : 6;
+        Inbox.add({
+          type: 'receive',
+          title: `${coin.symbol} deposit received`,
+          subtitle: `+${delta.toFixed(dec)} ${coin.symbol} · now ${newBal.toFixed(dec)} ${coin.symbol}`,
+        });
+      }
+    }
+  }
 }
 
 // ── Render helpers ────────────────────────────────────────────────────────────
