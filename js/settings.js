@@ -50,14 +50,22 @@
         } catch { return false; }
       };
 
+      // After whichever first factor succeeds, optionally chain TOTP if
+      // the user enabled 2FA. Any signing path that gates on verifyAuth
+      // (send, stake, earn, sweep) automatically inherits the second factor.
+      const finishWith2FA = () => {
+        if (window.TwoFA?.isEnabled?.()) {
+          window.TwoFA.prompt().then(resolve).catch(reject);
+        } else {
+          resolve();
+        }
+      };
       tryBiometric().then(ok => {
-        if (ok) { resolve(); return; }
-        // Fall back to password — rejecting on cancel/backdrop close so
-        // callers' try/catch fires and the calling button can re-enable.
+        if (ok) { finishWith2FA(); return; }
         passwordModal({
           title: '🔒 Confirm with password',
           message: reason,
-          onSubmit: async (_pwd, close) => { close(); resolve(); },
+          onSubmit: async (_pwd, close) => { close(); finishWith2FA(); },
           onCancel: () => reject(new Error('Cancelled')),
         });
       });
@@ -482,6 +490,99 @@
     const ccy = (window.getDisplayCurrency?.() || 'usd').toUpperCase();
     el.textContent = `${ccy} ›`;
   }
+  function refresh2FALabel() {
+    const el = document.getElementById('menu-2fa-value');
+    if (!el) return;
+    el.textContent = window.TwoFA?.isEnabled?.() ? 'On ›' : 'Off ›';
+  }
+
+  // ── Two-Factor (TOTP) setup ────────────────────────────────
+  function show2FAFlow() {
+    if (window.TwoFA?.isEnabled?.()) {
+      // Already on — offer to disable (gated by verifyAuth so it inherits
+      // any existing TOTP/biometric protection).
+      modal(`
+        <h2>🔐 Two-Factor Enabled</h2>
+        <p>Every send / stake / earn / sweep currently requires a 6-digit code from your authenticator app on top of biometric/password.</p>
+        <div class="modal-actions">
+          <button class="btn btn-outline" id="ta-close">Close</button>
+          <button class="btn btn-danger" id="ta-disable">Disable 2FA</button>
+        </div>
+      `, (root, close) => {
+        root.querySelector('#ta-close').onclick = close;
+        root.querySelector('#ta-disable').onclick = async () => {
+          if (!confirm('Turn off two-factor authentication?')) return;
+          try { await verifyAuth('Disable two-factor'); }
+          catch { return; }
+          window.TwoFA.disable();
+          refresh2FALabel();
+          close();
+          toast('Two-factor disabled');
+        };
+      });
+      return;
+    }
+
+    // Not enabled — generate a fresh secret and walk the user through setup.
+    const secret = window.TwoFA.generateSecret();
+    const label = (state.addresses?.BTC || 'wallet').slice(0, 12);
+    const uri = window.TwoFA.buildOtpAuthUri(secret, label);
+    modal(`
+      <h2>🔐 Set up Two-Factor</h2>
+      <p>Scan the QR code with Google Authenticator, Authy, or any TOTP app — then enter the current 6-digit code to confirm.</p>
+      <div id="ta-qr" style="display:flex;justify-content:center;margin:14px 0"></div>
+      <div style="text-align:center;font-size:11px;color:var(--text2);word-break:break-all;margin-bottom:12px">
+        Or paste this secret manually: <code style="color:var(--accent2)">${secret}</code>
+      </div>
+      <div class="form-group">
+        <label>Enter 6-digit code from your app</label>
+        <input id="ta-code" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+               placeholder="123456" autocomplete="one-time-code"
+               style="text-align:center;font-size:22px;letter-spacing:6px">
+      </div>
+      <div id="ta-err" style="color:var(--red);font-size:13px;min-height:18px"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="ta-cancel">Cancel</button>
+        <button class="btn btn-primary" id="ta-confirm">Enable</button>
+      </div>
+    `, (root, close) => {
+      // Render QR code into the slot.
+      const qrSlot = root.querySelector('#ta-qr');
+      if (typeof QRCode !== 'undefined') {
+        new QRCode(qrSlot, {
+          text: uri, width: 200, height: 200,
+          colorDark: '#000000', colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M,
+        });
+      }
+      const input = root.querySelector('#ta-code');
+      const err = root.querySelector('#ta-err');
+      const confirm = async () => {
+        const v = input.value.replace(/\D/g, '').slice(0, 6);
+        if (v.length !== 6) { err.textContent = 'Enter 6 digits'; return; }
+        // Manually verify the entered code against the candidate secret
+        // BEFORE persisting it — wrong code = bad enrollment.
+        const expected = await window.TwoFA.code(secret, Date.now());
+        const expectedPrev = await window.TwoFA.code(secret, Date.now() - 30000);
+        const expectedNext = await window.TwoFA.code(secret, Date.now() + 30000);
+        if (v !== expected && v !== expectedPrev && v !== expectedNext) {
+          err.textContent = 'Code did not match — make sure your authenticator clock is correct';
+          input.value = '';
+          return;
+        }
+        localStorage.setItem('vault.totp_secret', secret);
+        refresh2FALabel();
+        close();
+        toast('Two-factor enabled');
+      };
+      root.querySelector('#ta-confirm').onclick = confirm;
+      root.querySelector('#ta-cancel').onclick = close;
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') confirm(); });
+      input.addEventListener('input', () => {
+        input.value = input.value.replace(/\D/g, '').slice(0, 6);
+      });
+    });
+  }
 
   function showCurrencyPicker() {
     const current = (window.getDisplayCurrency?.() || 'usd');
@@ -517,6 +618,7 @@
     $('menu-change-pwd')?.addEventListener('click', changePassword);
     $('menu-manage-assets')?.addEventListener('click', showManageAssets);
     $('menu-currency')?.addEventListener('click', showCurrencyPicker);
+    $('menu-2fa')?.addEventListener('click', show2FAFlow);
     $('menu-check-update')?.addEventListener('click', checkForUpdates);
     $('menu-lock-wallet')?.addEventListener('click', () => $('lock-btn')?.click());
     $('menu-biometric')?.addEventListener('click', () => {
@@ -524,6 +626,7 @@
       else enableBiometric();
     });
     refreshCurrencyLabel();
+    refresh2FALabel();
     renderSettingsTab();
   }
 

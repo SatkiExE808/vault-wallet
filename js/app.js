@@ -99,7 +99,7 @@ const COINS = [
   // ── Bitcoin ──
   {
     id: 'BTC', name: 'Bitcoin', symbol: 'BTC', category: 'Bitcoin',
-    icon: `${CDN}/btc.svg`, color: '#f7931a', networkClass: 'network-btc',
+    icon: `${CDN}/btc.svg`, color: '#f7931a', networkLabel: 'Native SegWit', networkClass: 'network-btc',
     derive:  m    => BitcoinWallet.deriveAddress(m),
     balance: addr => BitcoinWallet.getBalance(addr),
     canSend: true, defaultEnabled: true,
@@ -365,7 +365,7 @@ const COINS = [
   // ── Monero ──
   {
     id: 'XMR', name: 'Monero', symbol: 'XMR', category: 'Monero',
-    icon: `${CDN}/xmr.svg`, color: '#ff6600', networkClass: 'network-xmr',
+    icon: `${CDN}/xmr.svg`, color: '#ff6600', networkLabel: 'Stealth', networkClass: 'network-xmr',
     derive:  m    => MoneroWallet.deriveAddress(m),
     balance: async (addr, extra) => MoneroWallet.getBalance(addr, extra?.viewKey),
     extra:      async m => ({ viewKey: await MoneroWallet.deriveViewKey(m) }),
@@ -389,7 +389,7 @@ const COINS = [
   // ── TRON ──
   {
     id: 'TRX', name: 'TRON', symbol: 'TRX', category: 'TRON',
-    icon: `${CDN}/trx.svg`, color: '#ef4444', networkClass: 'network-trc20',
+    icon: `${CDN}/trx.svg`, color: '#ef4444', networkLabel: 'TRC-20', networkClass: 'network-trc20',
     derive:  m    => TronWallet.deriveAddress(m),
     balance: addr => TronWallet.getTRXBalance(addr),
     canSend: true, defaultEnabled: true, canStake: true,
@@ -411,7 +411,7 @@ const COINS = [
   // ── Litecoin ──
   {
     id: 'LTC', name: 'Litecoin', symbol: 'LTC', category: 'Litecoin',
-    icon: `${CDN}/ltc.svg`, color: '#a6a9aa', networkClass: 'network-ltc',
+    icon: `${CDN}/ltc.svg`, color: '#a6a9aa', networkLabel: 'Native SegWit', networkClass: 'network-ltc',
     derive:  m    => LitecoinWallet.deriveAddress(m),
     balance: addr => LitecoinWallet.getBalance(addr),
     canSend: true, defaultEnabled: false,
@@ -423,7 +423,7 @@ const COINS = [
   // ── Dogecoin ──
   {
     id: 'DOGE', name: 'Dogecoin', symbol: 'DOGE', category: 'Dogecoin',
-    icon: `${CDN}/doge.svg`, color: '#c2a633', networkClass: 'network-doge',
+    icon: `${CDN}/doge.svg`, color: '#c2a633', networkLabel: 'Legacy', networkClass: 'network-doge',
     derive:  m    => DogecoinWallet.deriveAddress(m),
     balance: addr => DogecoinWallet.getBalance(addr),
     canSend: true, defaultEnabled: false,
@@ -438,7 +438,7 @@ const COINS = [
   {
     id: 'SOL', name: 'Solana', symbol: 'SOL', category: 'Solana',
     icon: 'https://assets.coingecko.com/coins/images/4128/large/solana.png',
-    color: '#9945ff', networkClass: 'network-sol',
+    color: '#9945ff', networkLabel: 'SPL', networkClass: 'network-sol',
     derive:  m    => SolanaWallet.deriveAddress(m),
     balance: addr => SolanaWallet.getBalance(addr),
     canSend: true, defaultEnabled: false, canStake: true,
