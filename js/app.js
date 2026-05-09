@@ -1372,8 +1372,13 @@ async function scanAddress(inputEl) {
     inputEl.value = QrScanner.extractAddress(text);
   } catch (e) {
     if (e.message === 'Cancelled') return;
-    if ((e.message || '').toLowerCase().includes('permission')) {
-      toast('Camera blocked — paste the address with the clipboard button instead');
+    const msg = (e.message || '').toLowerCase();
+    if (msg.includes('permission') || msg.includes('denied') || msg.includes('not allowed')) {
+      // Capacitor APK needs CAMERA in AndroidManifest. Reinstalling the
+      // SAME APK doesn't add it; the wallet must be rebuilt locally.
+      toast('Camera permission missing. If using the installed app, rebuild the APK (npm run sync). For now, use the clipboard button.', 6000);
+    } else if (msg.includes('not available') || msg.includes('not found')) {
+      toast('No camera available on this device');
     } else {
       toast(e.message || 'Scan failed');
     }

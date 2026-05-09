@@ -251,6 +251,30 @@
       actionsRow?.classList.remove('has-earn');
     }
 
+    // Helper: keep one of the four action buttons (Send / History /
+    // Stake / Earn) highlighted in the accent gradient while its content
+    // is showing. Inline content swaps Send <-> History; modal-based
+    // actions (Stake / Earn) revert to "Send active" once the modal
+    // closes since they don't have inline content here.
+    function setActiveAction(activeId) {
+      // Default to highlighting Send when nothing else is open — that
+      // matches the original "Send is the primary CTA" look.
+      const target = activeId || 'wd-send-toggle';
+      ['wd-send-toggle', 'wd-history-toggle'].forEach(id => {
+        const btn = $(id);
+        if (!btn) return;
+        const on = id === target;
+        btn.classList.toggle('btn-primary', on);
+        btn.classList.toggle('btn-outline', !on);
+      });
+    }
+    // Switching coins should also close any open inline panel and reset
+    // the highlighted button to Send — otherwise a History list from the
+    // previously-displayed coin sticks around with stale data.
+    $('wd-send-form').style.display = 'none';
+    $('wd-history-list').style.display = 'none';
+    setActiveAction(null);
+
     // Send toggle — shows the inline send form right in the wallet view
     $('wd-send-toggle').onclick = () => {
       const form = $('wd-send-form');
@@ -258,11 +282,13 @@
       if (visible) {
         form.style.display = 'none';
         clearFeeTimer();
+        setActiveAction(null);
         return;
       }
       // Close history if open
       $('wd-history-list').style.display = 'none';
       form.style.display = 'block';
+      setActiveAction('wd-send-toggle');
       // Sync state: select this coin so app.js helpers (validateAddress, send, fee) work
       selectCoin(coin.id);
       $('wd-send-symbol').textContent = coin.symbol;
@@ -369,11 +395,12 @@
     $('wd-history-toggle').onclick = async () => {
       const histDiv = $('wd-history-list');
       const visible = histDiv.style.display !== 'none';
-      if (visible) { histDiv.style.display = 'none'; return; }
+      if (visible) { histDiv.style.display = 'none'; setActiveAction(null); return; }
       // Close send form if open
       $('wd-send-form').style.display = 'none';
 
       histDiv.style.display = 'block';
+      setActiveAction('wd-history-toggle');
       histDiv.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:8px 0">Loading…</p>`;
       // Sync state so updateHistoryTab uses the right coin, then render into our div
       selectCoin(coin.id);
