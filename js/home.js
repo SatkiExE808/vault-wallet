@@ -179,9 +179,14 @@
         anyKnown = true;
       }
     }
-    total.textContent = anyKnown
-      ? '$' + sum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-      : '$—';
+    if (!anyKnown) { total.textContent = '—'; return; }
+    const ccy = (typeof getDisplayCurrency === 'function' ? getDisplayCurrency() : 'usd').toUpperCase();
+    const noDecimals = new Set(['JPY','KRW','IDR','VND']);
+    const digits = noDecimals.has(ccy) ? 0 : 2;
+    total.textContent = new Intl.NumberFormat(undefined, {
+      style: 'currency', currency: ccy,
+      minimumFractionDigits: digits, maximumFractionDigits: digits,
+    }).format(sum);
   }
 
   // Wallet view: which coin is currently displayed at top
