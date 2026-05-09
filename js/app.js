@@ -1171,8 +1171,10 @@ function validateAddress(address, coinId) {
     return null;
   }
   if (coinId === 'XMR') {
-    if ((!address.startsWith('4') && !address.startsWith('8')) || address.length !== 95)
-      return 'Invalid Monero address';
+    // Standard mainnet (4...) and subaddress (8...) are 95 chars; integrated
+    // addresses (4...) carrying an embedded 8-byte payment ID are 106 chars.
+    if (!address.startsWith('4') && !address.startsWith('8')) return 'Invalid Monero address';
+    if (address.length !== 95 && address.length !== 106) return 'Invalid Monero address (wrong length)';
     return null;
   }
   if (coinId === 'SOL') {
@@ -1204,6 +1206,36 @@ document.getElementById('send-max-btn').onclick = () => {
   }
 };
 
+// Pre-validate EVM gas before sending. Throws with a user-friendly message
+// when the gas balance or native balance won't cover the tx + fee, so both
+// the coin-detail and wallet-view send paths share the same guard rails.
+async function validateEvmGas(coinId, amt) {
+  const g = EVM_GAS[coinId];
+  if (!g) return;
+  const feeInfo = await estimateEvmFee(coinId).catch(() => null);
+  if (!feeInfo) return; // Flaky RPC — let the chain reject downstream
+  const buffer = feeInfo.isRollup ? 1.5 : 1.2;
+  const fee = parseFloat(feeInfo.fee) * buffer;
+  let feeBal = state.balances[feeInfo.feeId];
+  if (feeBal === undefined) {
+    const addr = state.addresses[coinId];
+    feeBal = g.chain === 'ETH'
+      ? await EthereumWallet.getETHBalance(addr)
+      : await EVMChains.getNative(addr, g.chain);
+  }
+  if (parseFloat(feeBal) < fee) {
+    throw new Error(`Not enough ${feeInfo.symbol} for gas. Need ~${fee.toFixed(6)} ${feeInfo.symbol}, have ${feeBal}`);
+  }
+  if (!g.token) {
+    const bal = parseFloat(state.balances[coinId] || '0');
+    if (parseFloat(amt) + fee > bal) {
+      const coin = COINS.find(c => c.id === coinId);
+      throw new Error(`Insufficient balance for gas. Max sendable: ~${Math.max(0, bal - fee).toFixed(6)} ${coin?.symbol || coinId}`);
+    }
+  }
+}
+window.validateEvmGas = validateEvmGas;
+
 document.getElementById('do-send-btn').onclick = async () => {
   const coin = COINS.find(c => c.id === state.active);
   const to  = document.getElementById('send-to').value.trim();
@@ -1230,35 +1262,7 @@ document.getElementById('do-send-btn').onclick = async () => {
   const btn = document.getElementById('do-send-btn');
   btn.disabled = true; btn.textContent = 'Sending…';
   try {
-    // EVM gas pre-validation
-    const g = EVM_GAS[coin.id];
-    if (g) {
-      const feeInfo = await estimateEvmFee(coin.id).catch(() => null);
-      if (feeInfo) {
-        // L2 rollups (Optimism / Base / Arbitrum) charge an L1 data fee on top of L2 gas.
-        // estimateFee already widens gasLimit 3x for rollups; here we apply a 1.5x buffer
-        // for rollups vs 1.2x for L1 chains, and require successful balance fetch.
-        const buffer = feeInfo.isRollup ? 1.5 : 1.2;
-        const fee = parseFloat(feeInfo.fee) * buffer;
-        let feeBal = state.balances[feeInfo.feeId];
-        if (feeBal === undefined) {
-          // Gas coin may not be enabled — fetch live so the check is never skipped on user-initiated send
-          const addr = state.addresses[coin.id]; // all EVM chains share the same address
-          feeBal = g.chain === 'ETH'
-            ? await EthereumWallet.getETHBalance(addr)
-            : await EVMChains.getNative(addr, g.chain);
-        }
-        if (parseFloat(feeBal) < fee)
-          throw new Error(`Not enough ${feeInfo.symbol} for gas fee. Need ~${fee.toFixed(6)} ${feeInfo.symbol}, have ${feeBal}`);
-        if (!g.token) {
-          const bal = parseFloat(state.balances[coin.id] || '0');
-          if (parseFloat(amt) + fee > bal)
-            throw new Error(`Insufficient balance for gas. Max sendable: ~${Math.max(0, bal - fee).toFixed(6)} ${coin.symbol}`);
-        }
-      }
-      // If feeInfo is null (estimateEvmFee failed), proceed — chain RPC will reject if truly underfunded.
-      // Better than silently blocking sends on a flaky public RPC.
-    }
+    await validateEvmGas(coin.id, amt);
     const txid = await coin.send(state.mnemonic, to, amt);
     toast(`Sent! TX: ${String(txid).slice(0, 20)}…`);
     if (typeof TxProgress !== 'undefined') TxProgress.track(coin.id, txid, 'send', amt);
@@ -1501,7 +1505,9 @@ function toast(msg, ms = 3000) {
   _toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
 
-// Auto-refresh balances every 60 s, prices every 5 min while wallet is unlocked
+// Auto-refresh balances every 60 s, prices every 5 min while wallet is unlocked.
+// Tick body is a no-op when locked (state.mnemonic check), so leaving the
+// interval running across lock is cheaper than tearing down and restarting.
 setInterval(() => { if (state.mnemonic) refreshBalances(); }, 60000);
 setInterval(() => { if (state.mnemonic) fetchPrices(); }, 300000);
 
