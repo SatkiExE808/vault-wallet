@@ -304,8 +304,13 @@
       window.loadWallet = async function() {
         await orig.apply(this, arguments);
         $('app').style.display = 'flex';
-        $('main').classList.remove('active');     // start on home
+        // Reset every view — was leaving stale .active from previous session
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
         $('home-view').classList.add('active');
+        // Reset bottom nav highlight to Home
+        document.querySelectorAll('.nav-item').forEach(n => {
+          n.classList.toggle('active', n.dataset.nav === 'home');
+        });
         updateHome();
       };
     }
