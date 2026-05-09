@@ -580,6 +580,7 @@ function showNewWallet() {
     <div class="seed-display">
       ${words.map((w, i) => `<div class="seed-word"><span>${i + 1}</span>${w}</div>`).join('')}
     </div>
+    <button class="btn btn-outline btn-sm" id="btn-copy-seed" style="width:100%;margin-top:10px">⧉ Copy all words</button>
     <label style="display:flex;align-items:center;gap:10px;font-size:13px;margin:16px 0;cursor:pointer">
       <input type="checkbox" id="chk-backup"> I have written down my recovery phrase
     </label>
