@@ -401,6 +401,63 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Tx progress pills (incoming / outgoing confirmation status) ── */
+.tx-progress-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.tx-progress {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px 5px;
+  min-width: 110px;
+  max-width: 100%;
+}
+.tx-prog-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+.tx-prog-bar {
+  width: 100%;
+  height: 3px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.tx-prog-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.6s ease;
+}
+.tx-prog-out .tx-prog-label { color: var(--accent2); }
+.tx-prog-out .tx-prog-fill {
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  box-shadow: 0 0 6px rgba(249,115,22,0.45);
+}
+.tx-prog-in .tx-prog-label { color: var(--green); }
+.tx-prog-in .tx-prog-fill {
+  background: linear-gradient(90deg, #16a34a, #22c55e);
+  box-shadow: 0 0 6px rgba(34,197,94,0.45);
+}
+/* Indeterminate scanning shimmer when confs == 0 */
+.tx-prog-fill[style*="width:0%"],
+.tx-prog-fill[style*="width: 0%"] {
+  width: 30% !important;
+  animation: tx-prog-shimmer 1.4s linear infinite;
+}
+@keyframes tx-prog-shimmer {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(360%); }
+}
+
 .asset-right { text-align: right; flex-shrink: 0; }
 .asset-bal { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .asset-usd { font-size: 11px; color: var(--text2); margin-top: 1px; font-variant-numeric: tabular-nums; }

@@ -777,6 +777,7 @@ async function loadWallet() {
   if (first) selectCoin(first.id);
   refreshBalances();
   fetchPrices();
+  if (typeof TxProgress !== 'undefined') TxProgress.start();
 }
 
 // ── Balance refresh ───────────────────────────────────────────────────────────
@@ -1217,6 +1218,7 @@ document.getElementById('do-send-btn').onclick = async () => {
     }
     const txid = await coin.send(state.mnemonic, to, amt);
     toast(`Sent! TX: ${String(txid).slice(0, 20)}…`);
+    if (typeof TxProgress !== 'undefined') TxProgress.track(coin.id, txid, 'send', amt);
     document.getElementById('send-to').value = '';
     document.getElementById('send-amount').value = '';
     setTimeout(refreshBalances, 4000);
@@ -1247,6 +1249,7 @@ document.getElementById('refresh-btn').onclick = async () => {
 document.getElementById('lock-btn').onclick = () => {
   if (!confirm('Lock wallet? Your encrypted wallet stays on this device. Enter your password to unlock again.')) return;
   clearFeeTimer();
+  if (typeof TxProgress !== 'undefined') TxProgress.stop();
   state.mnemonic = null;
   Object.assign(state, { addresses: {}, balances: {}, extras: {}, active: 'BTC' });
   document.getElementById('app').style.display = 'none';

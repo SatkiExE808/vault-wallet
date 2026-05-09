@@ -4,6 +4,25 @@
 (() => {
   const $ = id => document.getElementById(id);
 
+  // Render progress pills (incoming/outgoing confirmation status) for a coin.
+  // Returns '' when no active txs are tracked.
+  function renderProgressPills(coinId) {
+    if (typeof TxProgress === 'undefined') return '';
+    const items = TxProgress.getForCoin(coinId);
+    if (!items.length) return '';
+    return `<div class="tx-progress-row">` + items.map(it => {
+      const pct = Math.min(100, Math.round((it.confs / it.required) * 100));
+      const arrow = it.dir === 'send' ? '↑' : '↓';
+      const cls   = it.dir === 'send' ? 'tx-prog-out' : 'tx-prog-in';
+      const label = it.confs === 0 ? 'Pending' : `Confirming ${it.confs}/${it.required}`;
+      return `
+        <div class="tx-progress ${cls}" title="${it.hash}">
+          <span class="tx-prog-label">${arrow} ${label}</span>
+          <div class="tx-prog-bar"><div class="tx-prog-fill" style="width:${pct}%"></div></div>
+        </div>`;
+    }).join('') + `</div>`;
+  }
+
   // ── Custom category order (saved per-user) ────────────────
   const ORDER_KEY = 'category_order_v1';
   function loadCatOrder() {
@@ -102,6 +121,7 @@
         const usd = formatUSD(bal, state.prices[coin.id]) || '';
         const badge = coin.networkLabel
           ? `<span class="network-badge ${coin.networkClass}">${coin.networkLabel}</span>` : '';
+        const progress = renderProgressPills(coin.id);
         return `
           <div class="asset-item" data-coin="${coin.id}">
             <div class="asset-icon">
@@ -110,6 +130,7 @@
             <div class="asset-meta">
               <div class="asset-name">${coin.name} ${badge}</div>
               <div class="asset-symbol">${coin.symbol}</div>
+              ${progress}
             </div>
             <div class="asset-right">
               <div class="asset-bal">${bal}</div>
@@ -271,6 +292,7 @@
       try {
         const txid = await coin.send(state.mnemonic, to, amt);
         toast(`Sent! TX: ${String(txid).slice(0, 20)}…`);
+        if (typeof TxProgress !== 'undefined') TxProgress.track(coin.id, txid, 'send', amt);
         $('wd-send-to').value = '';
         $('wd-send-amount').value = '';
         $('wd-send-form').style.display = 'none';
@@ -372,6 +394,7 @@
         const usd = formatUSD(bal, state.prices[coin.id]) || '';
         const badge = coin.networkLabel
           ? `<span class="network-badge ${coin.networkClass}">${coin.networkLabel}</span>` : '';
+        const progress = renderProgressPills(coin.id);
         return `
           <div class="asset-item" data-coin="${coin.id}">
             <div class="asset-icon">
@@ -380,6 +403,7 @@
             <div class="asset-meta">
               <div class="asset-name">${coin.name} ${badge}</div>
               <div class="asset-symbol">${coin.symbol}</div>
+              ${progress}
             </div>
             <div class="asset-right">
               <div class="asset-bal">${bal}</div>
@@ -414,6 +438,9 @@
     updateTotalBalance();
   }
   window.updateHome = updateHome;
+
+  // Re-render lists when tx confirmation state changes so progress pills update.
+  if (typeof TxProgress !== 'undefined') TxProgress.subscribe(updateHome);
 
   // ── Patch app.js functions ────────────────────────────────
   function patchApp() {
