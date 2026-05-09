@@ -60,7 +60,9 @@ const TronWallet = (() => {
   }
 
   async function derivePrivateKey(mnemonic) {
-    const child = ethers.HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/195'/0'/0/0");
+    // 2nd arg is the BIP39 passphrase ("25th word"); '' = standard derivation.
+    const passphrase = (typeof window !== 'undefined' && window.getPassphrase) ? window.getPassphrase() : '';
+    const child = ethers.HDNodeWallet.fromPhrase(mnemonic, passphrase, "m/44'/195'/0'/0/0");
     return child.privateKey.replace('0x', '');
   }
 

@@ -86,12 +86,16 @@ const EthereumWallet = (() => {
     return rpcCall('eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
   }
 
+  // BIP39 passphrase ("25th word"), pulled from app state at derive time.
+  // '' means no passphrase, which yields the standard derivation.
+  function _pp() { return (typeof window !== 'undefined' && window.getPassphrase) ? window.getPassphrase() : ''; }
+
   async function deriveAddress(mnemonic) {
-    return ethers.Wallet.fromPhrase(mnemonic).address;
+    return ethers.Wallet.fromPhrase(mnemonic, _pp()).address;
   }
 
   async function derivePrivateKey(mnemonic) {
-    return ethers.Wallet.fromPhrase(mnemonic).privateKey;
+    return ethers.Wallet.fromPhrase(mnemonic, _pp()).privateKey;
   }
 
   // Old bug: HDNodeWallet.fromPhrase already derives at m/44'/60'/0'/0/0,
@@ -102,7 +106,7 @@ const EthereumWallet = (() => {
     // The old bug then called .derivePath("m/44'/60'/0'/0/0") on that node,
     // which re-derives 44'/60'/0'/0/0 relative to the current node,
     // ending at m/44'/60'/0'/0/0/44'/60'/0'/0/0.
-    const mid = ethers.HDNodeWallet.fromPhrase(mnemonic);
+    const mid = ethers.HDNodeWallet.fromPhrase(mnemonic, _pp());
     const legacy = mid.derivePath("44'/60'/0'/0/0");
     return { address: legacy.address, privateKey: legacy.privateKey };
   }

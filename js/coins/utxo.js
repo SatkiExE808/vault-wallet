@@ -374,11 +374,17 @@ const UTXOCrypto = (() => {
     return broadcastTx(rawHex);
   }
 
+  // BIP39 passphrase ("25th word"). Per BIP39 the salt is
+  // "mnemonic" + passphrase (NFKD-normalized). Empty passphrase ('')
+  // gives the standard derivation, so existing wallets are unaffected.
+  function _pp() { return (typeof window !== 'undefined' && window.getPassphrase) ? window.getPassphrase() : ''; }
+
   async function bip39ToSeed(mnemonic) {
     const enc = new TextEncoder();
+    const passphrase = _pp();
     const key = await crypto.subtle.importKey('raw', enc.encode(mnemonic.normalize('NFKD')), 'PBKDF2', false, ['deriveBits']);
     const bits = await crypto.subtle.deriveBits(
-      { name: 'PBKDF2', salt: enc.encode('mnemonic'.normalize('NFKD')), iterations: 2048, hash: 'SHA-512' },
+      { name: 'PBKDF2', salt: enc.encode(('mnemonic' + passphrase).normalize('NFKD')), iterations: 2048, hash: 'SHA-512' },
       key, 512
     );
     return new Uint8Array(bits);
