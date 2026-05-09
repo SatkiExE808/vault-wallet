@@ -4,7 +4,11 @@
 const TxProgress = (() => {
   const STORE_KEY = 'vault.txProgress.v1';
   const POLL_MS = 20_000;
-  const SCAN_MS = 90_000;
+  // 4-minute incoming-tx sweep cadence. Each tick fans out an history()
+  // call per enabled tracked coin (BTC/LTC/DOGE/EVM*) and the public
+  // explorers' free tiers throttle aggressively — anything more frequent
+  // burns through BlockCypher's 200/h DOGE quota.
+  const SCAN_MS = 240_000;
   const MAX_AGE_MS = 24 * 60 * 60 * 1000; // drop entries that never resolve after a day
 
   // Required confirmations per coin/chain. Tuned for UX, not full-finality.

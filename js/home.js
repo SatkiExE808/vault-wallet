@@ -315,7 +315,10 @@
       if (!to || !amt || parseFloat(amt) <= 0) { toast('Enter a valid address and amount.'); return; }
       const addrErr = validateAddress(to, coin.id);
       if (addrErr) { toast(addrErr); return; }
-      if (!confirm(`Send ${amt} ${coin.symbol}?\n\nTo:\n${to}`)) return;
+      const feeText = $('wd-send-fee-display')?.textContent || '';
+      const showFee = feeText && feeText !== '—' && feeText !== 'Estimating…';
+      const confirmMsg = `Send ${amt} ${coin.symbol}?\n\nTo:\n${to}${showFee ? '\n\nFee: ' + feeText : ''}`;
+      if (!confirm(confirmMsg)) return;
       if (typeof verifyAuth === 'function') {
         try { await verifyAuth(`Confirm sending ${amt} ${coin.symbol}`); }
         catch { toast('Send cancelled'); return; }
@@ -323,6 +326,7 @@
       const btn = $('wd-do-send');
       btn.disabled = true; btn.textContent = 'Sending…';
       try {
+        if (typeof validateEvmGas === 'function') await validateEvmGas(coin.id, amt);
         const txid = await coin.send(state.mnemonic, to, amt);
         toast(`Sent! TX: ${String(txid).slice(0, 20)}…`);
         if (typeof TxProgress !== 'undefined') TxProgress.track(coin.id, txid, 'send', amt);

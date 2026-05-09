@@ -1,4 +1,4 @@
-const CACHE = 'vault-v59';
+const CACHE = 'vault-v60';
 const LOCAL_FILES = [
   './index.html',
   './manifest.json',
@@ -19,6 +19,11 @@ const LOCAL_FILES = [
   './js/coins/monero.js',
   './js/coins/tron.js',
   './js/coins/solana.js',
+  // Monero browser bundle + worker + wasm — needed for offline XMR support.
+  './lib/monero-browser.js',
+  './lib/monero_wallet_full.js',
+  './lib/monero_wallet_full.wasm',
+  './monero_web_worker.js',
 ];
 
 // Cache local files on install

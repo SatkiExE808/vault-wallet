@@ -52,20 +52,21 @@
 
       tryBiometric().then(ok => {
         if (ok) { resolve(); return; }
-        // Fall back to password
+        // Fall back to password — rejecting on cancel/backdrop close so
+        // callers' try/catch fires and the calling button can re-enable.
         passwordModal({
           title: '🔒 Confirm with password',
           message: reason,
           onSubmit: async (_pwd, close) => { close(); resolve(); },
+          onCancel: () => reject(new Error('Cancelled')),
         });
-        // If user closes the modal without submitting we never resolve nor reject.
-        // Caller should handle via the user just abandoning the flow.
       });
     });
   }
   window.verifyAuth = verifyAuth;
 
-  function passwordModal({ title, message, onSubmit }) {
+  function passwordModal({ title, message, onSubmit, onCancel }) {
+    let settled = false;
     return modal(`
       <h2>${title}</h2>
       <p>${message}</p>
@@ -79,6 +80,14 @@
         <button class="btn btn-primary" id="pw-ok">Continue</button>
       </div>
     `, (root, close) => {
+      const cancelAndClose = () => {
+        if (settled) return;
+        settled = true;
+        close();
+        onCancel?.();
+      };
+      // Wrap close so submit handlers can call it without firing onCancel
+      const closeSubmitted = () => { settled = true; close(); };
       const input = root.querySelector('#pw-input');
       const err = root.querySelector('#pw-err');
       const submit = async () => {
@@ -88,13 +97,15 @@
         try {
           const decrypted = await decryptMnemonic(localStorage.getItem('wallet_encrypted'), pwd);
           if (decrypted !== state.mnemonic) throw new Error('Wrong password');
-          await onSubmit(pwd, close);
+          await onSubmit(pwd, closeSubmitted);
         } catch (e) {
           err.textContent = e.message || 'Wrong password';
         }
       };
       root.querySelector('#pw-ok').onclick = submit;
-      root.querySelector('#pw-cancel').onclick = close;
+      root.querySelector('#pw-cancel').onclick = cancelAndClose;
+      // Backdrop click also counts as cancel
+      root.addEventListener('click', e => { if (e.target === root) cancelAndClose(); });
       input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
     });
   }
@@ -288,12 +299,16 @@
   }
 
   function clearBiometric() {
-    localStorage.removeItem('biometric_enabled');
-    localStorage.removeItem('biometric_credential_id');
-    localStorage.removeItem('biometric_blob');
-    localStorage.removeItem('biometric_method');
+    // localStorage can throw in private-browsing / quota-exceeded modes.
+    // Swallow so the calling close()-then-clear flow can't leave a modal stuck.
+    try {
+      localStorage.removeItem('biometric_enabled');
+      localStorage.removeItem('biometric_credential_id');
+      localStorage.removeItem('biometric_blob');
+      localStorage.removeItem('biometric_method');
+    } catch (e) { console.warn('clearBiometric:', e); }
     toast('Biometric disabled');
-    renderSettingsTab();
+    try { renderSettingsTab(); } catch {}
   }
 
   async function disableBiometric() {

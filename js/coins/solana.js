@@ -91,10 +91,17 @@ const SolanaWallet = (() => {
     const conn = new solanaWeb3.Connection(RPCS[0], 'confirmed');
     const lamports = Math.floor(Number(amount) * solanaWeb3.LAMPORTS_PER_SOL);
     if (!Number.isFinite(lamports) || lamports <= 0) throw new Error('Invalid amount');
+    const toPk = new solanaWeb3.PublicKey(to);
+    // Sending SOL to a PDA (off-curve key) is permanent loss. validateAddress
+    // already enforces this for the UI flow; this guard catches any future
+    // programmatic caller that bypasses it.
+    if (!solanaWeb3.PublicKey.isOnCurve(toPk.toBytes())) {
+      throw new Error('Recipient is not a valid SOL account (off-curve / PDA)');
+    }
     const tx = new solanaWeb3.Transaction().add(
       solanaWeb3.SystemProgram.transfer({
         fromPubkey: kp.publicKey,
-        toPubkey: new solanaWeb3.PublicKey(to),
+        toPubkey: toPk,
         lamports,
       })
     );
@@ -192,7 +199,23 @@ const SolanaWallet = (() => {
     } catch { return []; }
   }
 
+  // Vote program ID (canonical Solana vote program owner of every vote account)
+  const VOTE_PROGRAM_ID = 'Vote111111111111111111111111111111111111111';
+
+  // Verify the address is a real vote account before delegating to it.
+  // Without this, a typo (or a token-mint pubkey copy/paste) creates a
+  // stake account that can't earn rewards and requires a deactivate +
+  // re-delegate cycle to recover.
+  async function assertIsVoteAccount(votePubkey) {
+    const info = await rpcCall('getAccountInfo', [votePubkey, { encoding: 'base64' }]);
+    if (!info || !info.value) throw new Error('Validator address has no on-chain account');
+    if (info.value.owner !== VOTE_PROGRAM_ID) {
+      throw new Error('Address is not a vote account (wrong program owner)');
+    }
+  }
+
   async function stakeSOL(mnemonic, validatorVoteAddress, amount) {
+    await assertIsVoteAccount(validatorVoteAddress);
     const kp = await deriveKeypair(mnemonic);
     const conn = new solanaWeb3.Connection(RPCS[0], 'confirmed');
     const lamports = Math.floor(Number(amount) * solanaWeb3.LAMPORTS_PER_SOL);
