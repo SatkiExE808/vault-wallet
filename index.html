@@ -99,7 +99,13 @@
         <!-- Inline send form (hidden until Send is tapped) -->
         <div id="wd-send-form" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);text-align:left">
           <div class="form-group">
-            <label>Recipient Address</label>
+            <label style="display:flex;justify-content:space-between;align-items:center">
+              <span>Recipient Address</span>
+              <span style="display:flex;gap:6px">
+                <button type="button" class="link-btn" id="wd-paste-addr">Paste</button>
+                <button type="button" class="link-btn" id="wd-scan-addr">Scan</button>
+              </span>
+            </label>
             <input type="text" id="wd-send-to" placeholder="Enter address…" autocomplete="off" spellcheck="false">
           </div>
           <div class="form-group">
@@ -257,7 +263,13 @@
             </p>
             <div id="send-form">
               <div class="form-group">
-                <label>Recipient Address</label>
+                <label style="display:flex;justify-content:space-between;align-items:center">
+                  <span>Recipient Address</span>
+                  <span style="display:flex;gap:6px">
+                    <button type="button" class="link-btn" id="paste-addr">Paste</button>
+                    <button type="button" class="link-btn" id="scan-addr">Scan</button>
+                  </span>
+                </label>
                 <input type="text" id="send-to" placeholder="Enter address…" autocomplete="off" spellcheck="false">
               </div>
               <div class="form-group">
@@ -343,6 +355,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.1/ethers.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tronweb@5.3.2/dist/TronWeb.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://unpkg.com/@solana/web3.js@1.95.4/lib/index.iife.min.js"></script>
 
   <!-- Coin modules (utxo.js must load first) -->
@@ -366,6 +379,7 @@
   <script src="js/earn.js"></script>
   <script src="js/inbox.js"></script>
   <script src="js/totp.js"></script>
+  <script src="js/qr-scanner.js"></script>
 
   <!-- PWA service worker -->
   <script>

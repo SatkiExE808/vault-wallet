@@ -1343,6 +1343,24 @@ function validateAddress(address, coinId) {
 }
 
 // ── Send ──────────────────────────────────────────────────────────────────────
+// Paste / Scan recipient address. Reuses QrScanner.extractAddress to strip
+// any URI prefix (bitcoin:, ethereum:, etc.).
+document.getElementById('paste-addr').onclick = async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    const cleaned = window.QrScanner ? QrScanner.extractAddress(text) : (text || '').trim();
+    if (!cleaned) { toast('Clipboard is empty'); return; }
+    document.getElementById('send-to').value = cleaned;
+  } catch { toast('Paste failed — clipboard access denied'); }
+};
+document.getElementById('scan-addr').onclick = async () => {
+  if (!window.QrScanner) { toast('Scanner unavailable'); return; }
+  try {
+    const text = await QrScanner.open();
+    document.getElementById('send-to').value = QrScanner.extractAddress(text);
+  } catch (e) { if (e.message !== 'Cancelled') toast(e.message || 'Scan failed'); }
+};
+
 document.getElementById('send-max-btn').onclick = () => {
   const coin = COINS.find(c => c.id === state.active);
   const balance = parseFloat(state.balances[coin.id] || '0');
