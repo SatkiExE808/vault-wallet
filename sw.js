@@ -1,4 +1,4 @@
-const CACHE = 'vault-v56';
+const CACHE = 'vault-v57';
 const LOCAL_FILES = [
   './index.html',
   './manifest.json',
@@ -36,12 +36,19 @@ self.addEventListener('install', e => {
   );
 });
 
-// Remove old caches on activate
+// Remove old caches on activate, then notify any open pages to reload so
+// they actually pick up the new JS bundles. (Without this, a SW update can
+// install fresh files into the cache, but pages keep running the JS that
+// was already loaded into memory — the cause of the v55→v56 "Infinity"
+// stuck-state bug.)
 self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
+  e.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+    await self.clients.claim();
+    const clients = await self.clients.matchAll({ type: 'window' });
+    for (const c of clients) c.postMessage({ type: 'SW_ACTIVATED', version: CACHE });
+  })());
 });
 
 // Network-first for everything: always get fresh code when online,

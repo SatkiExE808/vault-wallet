@@ -334,6 +334,16 @@
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
+      // When a new SW activates, the cache has fresh JS but this page is
+      // still running whatever was loaded at startup. Reload once so the
+      // user gets the new code without having to manually kill the app.
+      let _swReloaded = false;
+      navigator.serviceWorker.addEventListener('message', (e) => {
+        if (e.data?.type === 'SW_ACTIVATED' && !_swReloaded) {
+          _swReloaded = true;
+          location.reload();
+        }
+      });
     }
   </script>
 </body>
