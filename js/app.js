@@ -537,7 +537,7 @@ async function _blockscoutHistory(addr, base, explorer, tokenAddr, decimals) {
 // safe to embed because rate limits are per-key, not per-IP, and the
 // key only authorizes read-only history queries (no signing capability).
 // Replace with your own at https://etherscan.io/apidashboard if you fork.
-const ETHERSCAN_API_KEY = 'YourApiKeyToken';
+const ETHERSCAN_API_KEY = '4IS9KAY8J155HS8KM176G57BWWC32PYR1T';
 
 async function _etherscanHistory(addr, apiBase, explorer, tokenAddr, decimals, chainId) {
   // Etherscan V2 takes chainid as a query param and ignores it on per-chain
