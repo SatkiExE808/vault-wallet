@@ -537,7 +537,7 @@
     modal(`
       <h2>🔐 Set up Two-Factor</h2>
       <p style="font-size:13px">Scan with Google Authenticator, Authy, or any TOTP app — then enter the 6-digit code to confirm.</p>
-      <div id="ta-qr" style="display:flex;justify-content:center;margin:12px 0"></div>
+      <div class="qr-container"><div id="ta-qr"></div></div>
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:14px">
         <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Or enter this secret manually:</div>
         <div style="display:flex;align-items:center;gap:8px">

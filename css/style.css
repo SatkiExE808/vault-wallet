@@ -708,8 +708,10 @@ body {
 }
 
 /* QR frame — white card with gradient ring, soft accent glow,
-   and viewfinder corner brackets at NW + SE for a scanner look. */
-#qr-output, #wd-qr {
+   and viewfinder corner brackets at NW + SE for a scanner look.
+   Shared by the receive QRs (#qr-output / #wd-qr) and the 2FA setup
+   QR (#ta-qr) so all scannable QRs in the wallet match. */
+#qr-output, #wd-qr, #ta-qr {
   position: relative;
   display: inline-block;
   padding: 12px;
@@ -722,26 +724,28 @@ body {
     0 6px 16px rgba(0,0,0,0.45);
 }
 #qr-output::before, #qr-output::after,
-#wd-qr::before, #wd-qr::after {
+#wd-qr::before, #wd-qr::after,
+#ta-qr::before, #ta-qr::after {
   content: '';
   position: absolute;
   width: 16px; height: 16px;
   border: 2.5px solid var(--accent);
   pointer-events: none;
 }
-#qr-output::before, #wd-qr::before {
+#qr-output::before, #wd-qr::before, #ta-qr::before {
   top: -5px; left: -5px;
   border-right: 0; border-bottom: 0;
   border-top-left-radius: 6px;
 }
-#qr-output::after, #wd-qr::after {
+#qr-output::after, #wd-qr::after, #ta-qr::after {
   bottom: -5px; right: -5px;
   border-left: 0; border-top: 0;
   border-bottom-right-radius: 6px;
 }
 
 #qr-canvas, #qr-output canvas, #qr-output img,
-#wd-qr canvas, #wd-qr img {
+#wd-qr canvas, #wd-qr img,
+#ta-qr canvas, #ta-qr img {
   display: block;
   border-radius: 6px;
   background: #fff;
