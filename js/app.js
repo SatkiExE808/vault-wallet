@@ -805,6 +805,7 @@ async function loadWallet() {
   refreshBalances();
   fetchPrices();
   if (typeof TxProgress !== 'undefined') TxProgress.start();
+  if (typeof AaveEarn !== 'undefined') AaveEarn.startApyRefresh();
 }
 
 // ── Balance refresh ───────────────────────────────────────────────────────────
@@ -1285,6 +1286,7 @@ document.getElementById('lock-btn').onclick = () => {
   if (!confirm('Lock wallet? Your encrypted wallet stays on this device. Enter your password to unlock again.')) return;
   clearFeeTimer();
   if (typeof TxProgress !== 'undefined') TxProgress.stop();
+  if (typeof AaveEarn !== 'undefined') AaveEarn.stopApyRefresh();
   state.mnemonic = null;
   Object.assign(state, { addresses: {}, balances: {}, extras: {}, active: 'BTC' });
   document.getElementById('app').style.display = 'none';
