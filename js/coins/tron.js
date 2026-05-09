@@ -31,19 +31,24 @@ const TronWallet = (() => {
     } catch { return '0.00'; }
   }
 
+  function _toSun(amount, decimals = 6) {
+    const n = Number(amount);
+    if (!Number.isFinite(n) || n <= 0) throw new Error('Invalid amount');
+    const sun = Math.floor(n * Math.pow(10, decimals));
+    if (sun <= 0) throw new Error('Amount too small (must be at least 1 sun)');
+    return sun;
+  }
+
   async function sendUSDT(privateKey, toAddress, amount) {
     const tw = getTronWeb(privateKey);
     const contract = await tw.contract().at(USDT_TRC20);
-    const tx = await contract.transfer(
-      toAddress,
-      Math.floor(amount * 1e6)
-    ).send();
+    const tx = await contract.transfer(toAddress, _toSun(amount, 6)).send();
     return tx;
   }
 
   async function sendTRX(privateKey, toAddress, amount) {
     const tw = getTronWeb(privateKey);
-    const tx = await tw.trx.sendTransaction(toAddress, Math.floor(amount * 1e6));
+    const tx = await tw.trx.sendTransaction(toAddress, _toSun(amount, 6));
     return tx.transaction?.txID || tx.txid;
   }
 

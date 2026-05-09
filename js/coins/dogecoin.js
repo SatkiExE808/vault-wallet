@@ -3,7 +3,7 @@ const DogecoinWallet = (() => {
 
   async function getBalance(address) {
     try {
-      const r = await fetch(`${API}/addrs/${address}/balance`);
+      const r = await fetch(`${API}/addrs/${address}/balance`, { signal: AbortSignal.timeout(10000) });
       const d = await r.json();
       return ((d.balance ?? 0) / 1e8).toFixed(8);
     } catch { return '0.00000000'; }

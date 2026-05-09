@@ -560,20 +560,22 @@
     // Refresh button on coin view (mirrors home refresh)
     $('refresh-btn-coin').onclick = () => $('refresh-btn').click();
 
-    // Quick actions
-    $('qa-send').onclick = () => {
+    // Quick actions — IDs left over from the old design that no longer exist
+    // in index.html. Guard with optional chaining so the rest of wireEvents()
+    // doesn't throw if any of them are missing.
+    $('qa-send')?.addEventListener('click', () => {
       const first = (typeof getActiveCoins === 'function') ? getActiveCoins()[0] : null;
       if (!state.active && first) selectCoin(first.id);
       showView('coin');
       document.querySelector('.tab[data-tab="send"]')?.click();
-    };
-    $('qa-receive').onclick = () => {
+    });
+    $('qa-receive')?.addEventListener('click', () => {
       const first = (typeof getActiveCoins === 'function') ? getActiveCoins()[0] : null;
       if (!state.active && first) selectCoin(first.id);
       showView('coin');
       document.querySelector('.tab[data-tab="receive"]')?.click();
-    };
-    $('qa-manage').onclick = () => $('settings-btn')?.click();
+    });
+    $('qa-manage')?.addEventListener('click', () => $('settings-btn')?.click());
 
     // The action card (Send / History) is hidden by default so the receive view
     // (balance + QR + address) fits in one screen. Tapping Send or History opens it.

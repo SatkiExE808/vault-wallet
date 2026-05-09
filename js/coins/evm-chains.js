@@ -114,7 +114,7 @@ const EVMChains = (() => {
   async function sendNative(mnemonic, chainKey, to, amt) {
     const wallet = new ethers.Wallet(await _privateKey(mnemonic));
     const [nonceHex, gasPriceHex] = await Promise.all([
-      rpc(chainKey, 'eth_getTransactionCount', [wallet.address, 'latest']),
+      rpc(chainKey, 'eth_getTransactionCount', [wallet.address, 'pending']),
       rpc(chainKey, 'eth_gasPrice', []),
     ]);
     const tx = ethers.Transaction.from({
@@ -132,7 +132,7 @@ const EVMChains = (() => {
       'transfer', [to, ethers.parseUnits(String(amt), t.dec)]
     );
     const [nonceHex, gasPriceHex] = await Promise.all([
-      rpc(t.chain, 'eth_getTransactionCount', [wallet.address, 'latest']),
+      rpc(t.chain, 'eth_getTransactionCount', [wallet.address, 'pending']),
       rpc(t.chain, 'eth_gasPrice', []),
     ]);
     const tx = ethers.Transaction.from({

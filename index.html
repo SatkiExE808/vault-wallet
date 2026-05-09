@@ -338,11 +338,19 @@
       // still running whatever was loaded at startup. Reload once so the
       // user gets the new code without having to manually kill the app.
       let _swReloaded = false;
+      function _safeReload() {
+        if (_swReloaded) return;
+        // Don't reload while a modal is open or a button is in-flight —
+        // would lose user input or interrupt a pending signing tx. Retry
+        // every couple seconds until safe.
+        const modalOpen = !!document.querySelector('.modal-backdrop');
+        const inFlightBtn = !!document.querySelector('button:disabled[id*="-do"], button:disabled[id*="-send"], button:disabled[id*="copy"]');
+        if (modalOpen || inFlightBtn) { setTimeout(_safeReload, 2500); return; }
+        _swReloaded = true;
+        location.reload();
+      }
       navigator.serviceWorker.addEventListener('message', (e) => {
-        if (e.data?.type === 'SW_ACTIVATED' && !_swReloaded) {
-          _swReloaded = true;
-          location.reload();
-        }
+        if (e.data?.type === 'SW_ACTIVATED') _safeReload();
       });
     }
   </script>
