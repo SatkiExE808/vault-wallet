@@ -7,34 +7,88 @@ function escapeHtml(s) {
 }
 
 // ── Wallet encryption (AES-256-GCM, PBKDF2 key derivation) ───────────────────
+//
+// Format v1 (legacy): salt(16) | iv(12) | ciphertext, 300k PBKDF2 iterations.
+//   Identified by the absence of the v2 magic prefix.
+// Format v2 (current): magic(4) | iter(4 BE) | salt(16) | iv(12) | ciphertext.
+//   Magic = 0xFE 0xED 0xC0 0xDE. 600k PBKDF2 iterations (matches OWASP's
+//   2024+ guidance for SHA-256). Self-describing — no localStorage version
+//   key needed, so an interrupted upgrade can never desync metadata vs blob.
+//
+// Existing v1 wallets keep decrypting via the legacy path and get
+// opportunistically re-encrypted as v2 on the next successful unlock.
+const PBKDF2_ITERATIONS = 600_000;
+const V2_MAGIC = new Uint8Array([0xFE, 0xED, 0xC0, 0xDE]);
+
+function _hasV2Magic(data) {
+  return data.length >= 36 &&
+    data[0] === V2_MAGIC[0] && data[1] === V2_MAGIC[1] &&
+    data[2] === V2_MAGIC[2] && data[3] === V2_MAGIC[3];
+}
+
 async function encryptMnemonic(mnemonic, password) {
   const enc = new TextEncoder();
   const keyMat = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
   const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iterations = PBKDF2_ITERATIONS;
   const key = await crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 300000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
     keyMat, { name: 'AES-GCM', length: 256 }, false, ['encrypt']
   );
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(mnemonic));
-  const out = new Uint8Array(28 + ct.byteLength);
-  out.set(salt); out.set(iv, 16); out.set(new Uint8Array(ct), 28);
+  const out = new Uint8Array(4 + 4 + 16 + 12 + ct.byteLength);
+  out.set(V2_MAGIC, 0);
+  new DataView(out.buffer).setUint32(4, iterations, false);
+  out.set(salt, 8);
+  out.set(iv, 24);
+  out.set(new Uint8Array(ct), 36);
   return btoa(String.fromCharCode(...out));
 }
 
 async function decryptMnemonic(encrypted, password) {
   const enc = new TextEncoder();
   const data = Uint8Array.from(atob(encrypted), c => c.charCodeAt(0));
-  const salt = data.slice(0, 16), iv = data.slice(16, 28), ct = data.slice(28);
+  let iterations, salt, iv, ct;
+  if (_hasV2Magic(data)) {
+    iterations = new DataView(data.buffer, data.byteOffset + 4, 4).getUint32(0, false);
+    salt = data.slice(8, 24);
+    iv = data.slice(24, 36);
+    ct = data.slice(36);
+  } else {
+    iterations = 300_000;
+    salt = data.slice(0, 16);
+    iv = data.slice(16, 28);
+    ct = data.slice(28);
+  }
   const keyMat = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
   const key = await crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 300000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
     keyMat, { name: 'AES-GCM', length: 256 }, false, ['decrypt']
   );
   try {
     const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
     return new TextDecoder().decode(pt);
   } catch { throw new Error('Incorrect password'); }
+}
+
+// Re-encrypt a legacy v1 blob with v2 parameters after a successful unlock.
+// Idempotent — bails out if already v2.
+async function maybeUpgradeEncryption(mnemonic, password) {
+  const existing = localStorage.getItem('wallet_encrypted');
+  if (!existing) return;
+  const data = Uint8Array.from(atob(existing), c => c.charCodeAt(0));
+  if (_hasV2Magic(data)) return;
+  try {
+    const upgraded = await encryptMnemonic(mnemonic, password);
+    // Verify round-trip before overwriting the working blob.
+    const roundTrip = await decryptMnemonic(upgraded, password);
+    if (roundTrip !== mnemonic) throw new Error('round-trip mismatch');
+    localStorage.setItem('wallet_encrypted', upgraded);
+  } catch (e) {
+    // Don't block unlock on a failed upgrade — the v1 blob still works.
+    console.warn('Encryption upgrade failed:', e);
+  }
 }
 
 // ── Coin icon CDN ─────────────────────────────────────────────────────────────
@@ -736,6 +790,9 @@ function showUnlock() {
     try {
       const mnemonic = await decryptMnemonic(localStorage.getItem('wallet_encrypted'), pwd);
       state.mnemonic = mnemonic;
+      // Opportunistic upgrade of v1 blobs (300k iterations) to v2 (600k).
+      // Fire-and-forget — never block the unlock flow on an upgrade attempt.
+      maybeUpgradeEncryption(mnemonic, pwd).catch(() => {});
       await loadWallet();
     } catch {
       err.style.display = 'block';
@@ -751,6 +808,7 @@ function showUnlock() {
       const pwd = await window.unlockWithBiometric();
       const mnemonic = await decryptMnemonic(localStorage.getItem('wallet_encrypted'), pwd);
       state.mnemonic = mnemonic;
+      maybeUpgradeEncryption(mnemonic, pwd).catch(() => {});
       await loadWallet();
     } catch (e) {
       btn.disabled = false; btn.textContent = '👆 Unlock with Face ID / Biometric';
