@@ -73,6 +73,7 @@ const TronWallet = (() => {
 
   async function getTRXHistory(address) {
     const r = await fetch(`${TRONGRID}/v1/accounts/${address}/transactions?limit=20&only_confirmed=true`, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error(`TronGrid HTTP ${r.status}`);
     const j = await r.json();
     return (j.data || [])
       .filter(tx => tx.raw_data?.contract?.[0]?.type === 'TransferContract')
@@ -90,6 +91,7 @@ const TronWallet = (() => {
 
   async function getUSDTHistory(address) {
     const r = await fetch(`${TRONGRID}/v1/accounts/${address}/transactions/trc20?limit=20&contract_address=${USDT_TRC20}`, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error(`TronGrid HTTP ${r.status}`);
     const j = await r.json();
     return (j.data || []).map(tx => ({
       hash: tx.transaction_id, type: tx.from === address ? 'send' : 'receive',

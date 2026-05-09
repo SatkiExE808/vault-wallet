@@ -19,9 +19,12 @@ const BitcoinWallet = (() => {
       mnemonic, coinType: 0, hrp: 'bc',
       toAddress, amount: amountBTC,
       fetchUTXOs: async addr => {
-        const r = await fetch(`${API}/address/${addr}/utxo`);
+        const r = await fetch(`${API}/address/${addr}/utxo`, { signal: AbortSignal.timeout(15000) });
         if (!r.ok) throw new Error('Failed to fetch UTXOs');
-        return r.json();
+        const utxos = await r.json();
+        // Skip unconfirmed UTXOs — spending unconfirmed change can produce
+        // 'missing inputs' rejections if the parent tx hasn't propagated.
+        return utxos.filter(u => u.status?.confirmed === true);
       },
       getFeeRate: async () => {
         try { const f = await fetch('https://mempool.space/api/v1/fees/recommended').then(r => r.json()); return Math.max(1, f.halfHourFee || 5); }

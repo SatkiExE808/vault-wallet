@@ -64,9 +64,14 @@ const SolanaWallet = (() => {
           body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
           signal: AbortSignal.timeout(10000),
         });
-        if (!r.ok) { lastErr = new Error(`HTTP ${r.status}`); continue; }
+        if (!r.ok) { lastErr = new Error(`HTTP ${r.status} from ${new URL(url).host}`); continue; }
         const j = await r.json();
-        if (j.error) { lastErr = new Error(j.error.message || 'RPC error'); continue; }
+        if (j.error) {
+          lastErr = new Error(j.error.message || 'RPC error');
+          // Application-layer error (method-not-supported, rate limit, etc.)
+          // — try the next endpoint.
+          continue;
+        }
         return j.result;
       } catch (e) { lastErr = e; }
     }

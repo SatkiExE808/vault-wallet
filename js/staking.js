@@ -141,7 +141,11 @@ const Staking = (() => {
           ? await SolanaWallet.liquidStakeJupSol(state.mnemonic, amt)
           : await SolanaWallet.liquidUnstakeJupSol(state.mnemonic, amt);
         toast(`Done! TX: ${String(sig).slice(0, 20)}…`);
-        close(); setTimeout(refreshBalances, 4000);
+        close();
+        // Solana confirms quickly but Jupiter swap balances take 10-20s
+        // to settle. Two refreshes catches both fast and slow cases.
+        setTimeout(refreshBalances, 6000);
+        setTimeout(refreshBalances, 20000);
       } catch (e) { errDiv.textContent = e.message || 'Transaction failed'; btn.disabled = false; btn.textContent = 'Confirm'; }
     };
   }

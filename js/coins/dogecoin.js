@@ -19,10 +19,14 @@ const DogecoinWallet = (() => {
       mnemonic, coinType: 3, versionByte: 0x1e, bech32Prefix: null,
       toAddress, amount: amountDOGE,
       fetchUTXOs: async addr => {
-        const r = await fetch(`${API}/addrs/${addr}?unspentOnly=true`);
+        const r = await fetch(`${API}/addrs/${addr}?unspentOnly=true&confirmations=1`, { signal: AbortSignal.timeout(15000) });
         if (!r.ok) throw new Error('Failed to fetch UTXOs');
         const d = await r.json();
-        return (d.txrefs || []).map(u => ({ txid: u.tx_hash, vout: u.tx_output_n, value: u.value }));
+        // Defensive filter — only spend UTXOs with at least one confirmation
+        // so we never try to spend our own unconfirmed change tx.
+        return (d.txrefs || [])
+          .filter(u => Number(u.confirmations || 0) >= 1)
+          .map(u => ({ txid: u.tx_hash, vout: u.tx_output_n, value: u.value }));
       },
       getFeeRate: async () => {
         // BlockCypher returns medium_fee_per_kb in sat/kB; UTXO builder expects sat/byte.
@@ -37,6 +41,7 @@ const DogecoinWallet = (() => {
         const r = await fetch(`${API}/txs/push`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tx: hex }),
+          signal: AbortSignal.timeout(20000),
         });
         const d = await r.json();
         if (d.error) throw new Error(d.error);
