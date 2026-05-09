@@ -576,6 +576,7 @@ function showNewWallet() {
     <h1>Your Recovery Phrase</h1>
     <p>Write these 12 words down and keep them safe. They are the only way to recover your wallet.</p>
     <div class="warning-box">⚠ Never share your seed phrase with anyone.</div>
+    <button class="btn btn-primary btn-sm" id="btn-copy-seed" style="width:100%;margin-bottom:12px">⧉ Copy all 12 words</button>
     <div class="seed-display">
       ${words.map((w, i) => `<div class="seed-word"><span>${i + 1}</span>${w}</div>`).join('')}
     </div>
