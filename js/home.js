@@ -214,6 +214,7 @@
 
     // Show / hide Stake button for stakable coins (SOL, TRX)
     const stakeBtn = $('wd-stake-toggle');
+    const earnBtn  = $('wd-earn-toggle');
     const actionsRow = $('wd-balance-actions');
     if (coin.canStake && typeof openStakeModal === 'function') {
       stakeBtn.style.display = '';
@@ -222,6 +223,15 @@
     } else {
       stakeBtn.style.display = 'none';
       actionsRow?.classList.remove('has-stake');
+    }
+    // Show / hide Earn button for Aave-supported stablecoins
+    if (coin.canEarn && typeof openEarnModal === 'function') {
+      earnBtn.style.display = '';
+      actionsRow?.classList.add('has-earn');
+      earnBtn.onclick = () => openEarnModal(coin.id);
+    } else {
+      earnBtn.style.display = 'none';
+      actionsRow?.classList.remove('has-earn');
     }
 
     // Send toggle — shows the inline send form right in the wallet view

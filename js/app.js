@@ -383,6 +383,14 @@ const COINS = [
   },
 ];
 
+// Stablecoins available for one-tap Aave v3 yield. Kept in one place so the
+// list stays in sync with js/aave.js SUPPORTED.
+['USDT_POLY','USDC_POLY','USDT_ARB','USDC_ARB','USDT_OPT','USDC_OPT',
+ 'USDC_BASE','USDT_AVAX','USDC_AVAX','USDT_BEP20','USDC_BEP20'].forEach(id => {
+  const c = COINS.find(x => x.id === id);
+  if (c) c.canEarn = true;
+});
+
 // ── EVM chain config — Blockscout (free, no API key) + explorer links ─────────
 const CHAIN_CONFIG = {
   ETH:       { blockscout: 'https://eth.blockscout.com',      explorer: 'https://etherscan.io' },

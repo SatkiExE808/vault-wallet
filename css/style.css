@@ -555,7 +555,10 @@ body {
   margin-top: 10px;
 }
 .balance-actions.has-stake { grid-template-columns: 1fr 1fr 1fr; }
+.balance-actions.has-earn { grid-template-columns: 1fr 1fr 1fr; }
+.balance-actions.has-stake.has-earn { grid-template-columns: 1fr 1fr 1fr 1fr; }
 .balance-actions .btn { padding: 8px 10px; font-size: 13px; border-radius: 10px; }
+.balance-actions.has-stake.has-earn .btn { padding: 8px 4px; font-size: 12px; }
 .balance-actions .btn-with-icon { gap: 6px; }
 .balance-actions .btn-with-icon svg { width: 13px; height: 13px; }
 
