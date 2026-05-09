@@ -492,15 +492,14 @@ const COINS = [
 // ── EVM chain config — Blockscout (free, no API key) + explorer links ─────────
 const CHAIN_CONFIG = {
   ETH:       { blockscout: 'https://eth.blockscout.com',      explorer: 'https://etherscan.io' },
-  // BSC's Etherscan V2 free tier hits a "subscription required" wall, and
-  // Routescan doesn't cover BSC mainnet. Blockchair has a free public tier
-  // (no API key needed) for BSC at low request rates.
-  BSC:       { blockchair: 'binance-smart-chain',             explorer: 'https://bscscan.com' },
+  // Etherscan V2 unified API. Free tier (5 req/s, 100k/day) covers
+  // every supported chain via the chainid parameter, authorized by the
+  // single ETHERSCAN_API_KEY at the top of this file.
+  BSC:       { etherscan:  'https://api.etherscan.io/v2/api', chainId: 56, explorer: 'https://bscscan.com' },
   POLYGON:   { blockscout: 'https://polygon.blockscout.com',  explorer: 'https://polygonscan.com' },
   AVALANCHE: { etherscan:  'https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan/api', explorer: 'https://snowtrace.io' },
   ARBITRUM:  { blockscout: 'https://arbitrum.blockscout.com', explorer: 'https://arbiscan.io' },
-  // Optimism: same situation as BSC. Blockchair covers it free.
-  OPTIMISM:  { blockchair: 'optimism',                        explorer: 'https://optimistic.etherscan.io' },
+  OPTIMISM:  { etherscan:  'https://api.etherscan.io/v2/api', chainId: 10, explorer: 'https://optimistic.etherscan.io' },
   BASE:      { blockscout: 'https://base.blockscout.com',     explorer: 'https://basescan.org' },
 };
 
