@@ -115,6 +115,11 @@ const Inbox = (() => {
   function init() {
     $('inbox-btn')?.addEventListener('click', open);
     $('inbox-back')?.addEventListener('click', () => showView('home'));
+    $('inbox-clear')?.addEventListener('click', () => {
+      if (load().length === 0) return;
+      if (!confirm('Clear all inbox notifications? This won\'t affect any actual transactions or balances.')) return;
+      clearAll();
+    });
     updateBell();
   }
 
