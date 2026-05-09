@@ -127,7 +127,7 @@ const Staking = (() => {
 
     const { root, close } = showModal(`
       <h2>Stake TRX</h2>
-      <p>Freeze TRX to gain ENERGY (free USDT transfers) or BANDWIDTH. Unbonding takes 14 days.</p>
+      <p>Freeze TRX to gain ENERGY (free USDT transfers) or BANDWIDTH, then vote for a Super Representative to earn rewards (~3–5% APY). Unbonding takes 14 days.</p>
       <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px">
         <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Liquid balance</span><span><b>${liquidBal} TRX</b></span></div>
         <div id="stk-info" style="margin-top:6px;color:var(--text2)">Loading…</div>
@@ -138,6 +138,8 @@ const Staking = (() => {
           <option value="freeze">Stake (freeze)</option>
           <option value="unfreeze">Unstake (unfreeze)</option>
           <option value="withdraw">Withdraw expired</option>
+          <option value="vote">Vote for SR</option>
+          <option value="claim">Claim rewards</option>
         </select>
       </div>
       <div class="form-group" id="stk-resource-group">
@@ -151,6 +153,18 @@ const Staking = (() => {
         <label>Amount (TRX)</label>
         <input id="stk-amount" type="number" step="any" min="0" placeholder="0.0">
       </div>
+      <div class="form-group" id="stk-vote-group" style="display:none">
+        <label>Super Representative address</label>
+        <input id="stk-sr-address" placeholder="T... vote address" autocomplete="off" spellcheck="false">
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">
+          Browse SRs at <a href="https://tronscan.org/#/sr/representatives" target="_blank" style="color:var(--accent)">tronscan.org</a>.
+        </div>
+      </div>
+      <div class="form-group" id="stk-tp-group" style="display:none">
+        <label>TRON Power to vote</label>
+        <input id="stk-tp-count" type="number" step="1" min="1" placeholder="0">
+      </div>
+      <div id="stk-claim-info" style="display:none;background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px"></div>
       <div id="stk-err" style="color:var(--red);font-size:13px;min-height:18px;margin-bottom:8px"></div>
       <div class="modal-actions">
         <button class="btn btn-outline" id="stk-close">Close</button>
@@ -160,52 +174,132 @@ const Staking = (() => {
     root.querySelector('#stk-close').onclick = close;
 
     const infoDiv = root.querySelector('#stk-info');
-    TronWallet.getStakeInfo(addr).then(info => {
+    const claimInfo = root.querySelector('#stk-claim-info');
+    let voting = { tronPower: 0, tronPowerAvailable: 0, currentVotes: [], claimableRewards: 0 };
+
+    Promise.all([
+      TronWallet.getStakeInfo(addr),
+      TronWallet.getVotingInfo(addr),
+    ]).then(([stake, vote]) => {
+      voting = vote;
       const now = Date.now();
-      const claimable = info.pending.filter(p => p.expireMs <= now).reduce((s, p) => s + p.amount, 0);
-      const waiting   = info.pending.filter(p => p.expireMs >  now);
+      const claimable = stake.pending.filter(p => p.expireMs <= now).reduce((s, p) => s + p.amount, 0);
+      const waiting   = stake.pending.filter(p => p.expireMs >  now);
+      const votesHtml = vote.currentVotes.length
+        ? `<div style="margin-top:4px">Voting: ${vote.currentVotes.map(v => `${v.voteCount} → ${v.srAddress.slice(0,6)}…${v.srAddress.slice(-4)}`).join(', ')}</div>`
+        : '';
       infoDiv.innerHTML = `
-        <div>Frozen for ENERGY: <b>${info.energy.toFixed(2)} TRX</b></div>
-        <div>Frozen for BANDWIDTH: <b>${info.bandwidth.toFixed(2)} TRX</b></div>
-        ${claimable > 0 ? `<div style="color:var(--green)">Claimable now: <b>${claimable.toFixed(2)} TRX</b></div>` : ''}
-        ${waiting.length ? `<div>Pending: ${waiting.map(p => `${p.amount.toFixed(2)} TRX in ${Math.ceil((p.expireMs - now) / 86400000)}d`).join(', ')}</div>` : ''}
+        <div>Frozen for ENERGY: <b>${stake.energy.toFixed(2)} TRX</b></div>
+        <div>Frozen for BANDWIDTH: <b>${stake.bandwidth.toFixed(2)} TRX</b></div>
+        <div>TRON Power: <b>${vote.tronPower.toFixed(2)}</b> · used <b>${vote.tronPowerUsed.toFixed(0)}</b> · free <b>${vote.tronPowerAvailable.toFixed(0)}</b></div>
+        ${vote.claimableRewards > 0 ? `<div style="color:var(--green)">Claimable rewards: <b>${vote.claimableRewards.toFixed(6)} TRX</b></div>` : ''}
+        ${claimable > 0 ? `<div style="color:var(--green)">Unfrozen ready to withdraw: <b>${claimable.toFixed(2)} TRX</b></div>` : ''}
+        ${waiting.length ? `<div>Unfreeze pending: ${waiting.map(p => `${p.amount.toFixed(2)} TRX in ${Math.ceil((p.expireMs - now) / 86400000)}d`).join(', ')}</div>` : ''}
+        ${votesHtml}
       `;
+      // Now that we know rewards, refresh the claim panel if currently shown
+      if (actionSel.value === 'claim') updateActionView();
     });
 
     const actionSel = root.querySelector('#stk-action');
-    const amountGroup = root.querySelector('#stk-amount-group');
+    const amountGroup   = root.querySelector('#stk-amount-group');
     const resourceGroup = root.querySelector('#stk-resource-group');
-    actionSel.onchange = () => {
+    const voteGroup     = root.querySelector('#stk-vote-group');
+    const tpGroup       = root.querySelector('#stk-tp-group');
+
+    function updateActionView() {
       const v = actionSel.value;
-      amountGroup.style.display   = v === 'withdraw' ? 'none' : '';
-      resourceGroup.style.display = v === 'withdraw' ? 'none' : '';
-    };
+      amountGroup.style.display   = (v === 'freeze' || v === 'unfreeze') ? '' : 'none';
+      resourceGroup.style.display = (v === 'freeze' || v === 'unfreeze') ? '' : 'none';
+      voteGroup.style.display     = v === 'vote' ? '' : 'none';
+      tpGroup.style.display       = v === 'vote' ? '' : 'none';
+      if (v === 'claim') {
+        claimInfo.style.display = '';
+        claimInfo.innerHTML = voting.claimableRewards > 0
+          ? `Claim <b>${voting.claimableRewards.toFixed(6)} TRX</b> in voting rewards. Note: TRON enforces a 24-hour cooldown between claims.`
+          : 'No rewards to claim yet. Vote for a Super Representative and check back in ~24h.';
+      } else {
+        claimInfo.style.display = 'none';
+      }
+    }
+    actionSel.onchange = updateActionView;
+    updateActionView();
 
     const errDiv = root.querySelector('#stk-err');
     root.querySelector('#stk-do').onclick = async () => {
       errDiv.textContent = '';
       const action = actionSel.value;
-      const resource = root.querySelector('#stk-resource').value;
-      const amt = root.querySelector('#stk-amount').value.trim();
-      if (action !== 'withdraw' && (!amt || parseFloat(amt) <= 0)) {
-        errDiv.textContent = 'Enter a valid amount'; return;
-      }
-      const verb = action === 'freeze' ? 'stake' : action === 'unfreeze' ? 'unstake' : 'withdraw expired';
-      if (!confirm(`Confirm ${verb}${action === 'withdraw' ? '' : ` ${amt} TRX`}?`)) return;
-      if (typeof verifyAuth === 'function') {
-        try { await verifyAuth(`Confirm ${verb}`); } catch { toast('Cancelled'); return; }
-      }
       const btn = root.querySelector('#stk-do');
-      btn.disabled = true; btn.textContent = 'Submitting…';
-      try {
-        let txid;
-        if (action === 'freeze')        txid = await TronWallet.freezeTRX(state.mnemonic, amt, resource);
-        else if (action === 'unfreeze') txid = await TronWallet.unfreezeTRX(state.mnemonic, amt, resource);
-        else                            txid = await TronWallet.withdrawUnfrozenTRX(state.mnemonic);
-        toast(`Done! TX: ${String(txid).slice(0, 20)}…`);
-        close();
-        setTimeout(refreshBalances, 4000);
-      } catch (e) { errDiv.textContent = e.message || 'Transaction failed'; btn.disabled = false; btn.textContent = 'Confirm'; }
+
+      if (action === 'freeze' || action === 'unfreeze') {
+        const resource = root.querySelector('#stk-resource').value;
+        const amt = root.querySelector('#stk-amount').value.trim();
+        if (!amt || parseFloat(amt) <= 0) { errDiv.textContent = 'Enter a valid amount'; return; }
+        const verb = action === 'freeze' ? 'stake' : 'unstake';
+        if (!confirm(`Confirm ${verb} ${amt} TRX?`)) return;
+        if (typeof verifyAuth === 'function') {
+          try { await verifyAuth(`Confirm ${verb}`); } catch { toast('Cancelled'); return; }
+        }
+        btn.disabled = true; btn.textContent = 'Submitting…';
+        try {
+          const txid = action === 'freeze'
+            ? await TronWallet.freezeTRX(state.mnemonic, amt, resource)
+            : await TronWallet.unfreezeTRX(state.mnemonic, amt, resource);
+          toast(`Done! TX: ${String(txid).slice(0, 20)}…`);
+          close(); setTimeout(refreshBalances, 4000);
+        } catch (e) { errDiv.textContent = e.message || 'Transaction failed'; btn.disabled = false; btn.textContent = 'Confirm'; }
+        return;
+      }
+
+      if (action === 'withdraw') {
+        if (!confirm('Withdraw expired unfrozen TRX?')) return;
+        if (typeof verifyAuth === 'function') {
+          try { await verifyAuth('Withdraw expired'); } catch { toast('Cancelled'); return; }
+        }
+        btn.disabled = true; btn.textContent = 'Submitting…';
+        try {
+          const txid = await TronWallet.withdrawUnfrozenTRX(state.mnemonic);
+          toast(`Done! TX: ${String(txid).slice(0, 20)}…`);
+          close(); setTimeout(refreshBalances, 4000);
+        } catch (e) { errDiv.textContent = e.message || 'Transaction failed'; btn.disabled = false; btn.textContent = 'Confirm'; }
+        return;
+      }
+
+      if (action === 'vote') {
+        const srAddr = root.querySelector('#stk-sr-address').value.trim();
+        const count  = parseInt(root.querySelector('#stk-tp-count').value, 10);
+        if (!srAddr || !srAddr.startsWith('T') || srAddr.length !== 34) { errDiv.textContent = 'Invalid SR address'; return; }
+        if (!Number.isFinite(count) || count <= 0) { errDiv.textContent = 'Enter a valid TP count'; return; }
+        if (count > voting.tronPowerAvailable) {
+          errDiv.textContent = `Only ${voting.tronPowerAvailable.toFixed(0)} TP available. Freeze more TRX to gain TP.`; return;
+        }
+        if (!confirm(`Vote ${count} TP for ${srAddr.slice(0,6)}…${srAddr.slice(-4)}?\n\nThis adds to your existing votes.`)) return;
+        if (typeof verifyAuth === 'function') {
+          try { await verifyAuth('Confirm vote'); } catch { toast('Cancelled'); return; }
+        }
+        btn.disabled = true; btn.textContent = 'Voting…';
+        try {
+          const txid = await TronWallet.voteForSR(state.mnemonic, srAddr, count);
+          toast(`Voted! TX: ${String(txid).slice(0, 20)}…`);
+          close();
+        } catch (e) { errDiv.textContent = e.message || 'Vote failed'; btn.disabled = false; btn.textContent = 'Confirm'; }
+        return;
+      }
+
+      if (action === 'claim') {
+        if (voting.claimableRewards <= 0) { errDiv.textContent = 'Nothing to claim'; return; }
+        if (!confirm(`Claim ${voting.claimableRewards.toFixed(6)} TRX in rewards?`)) return;
+        if (typeof verifyAuth === 'function') {
+          try { await verifyAuth('Claim rewards'); } catch { toast('Cancelled'); return; }
+        }
+        btn.disabled = true; btn.textContent = 'Claiming…';
+        try {
+          const txid = await TronWallet.claimRewards(state.mnemonic);
+          toast(`Claimed! TX: ${String(txid).slice(0, 20)}…`);
+          close(); setTimeout(refreshBalances, 4000);
+        } catch (e) { errDiv.textContent = e.message || 'Claim failed'; btn.disabled = false; btn.textContent = 'Confirm'; }
+        return;
+      }
     };
   }
 
