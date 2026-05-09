@@ -498,9 +498,13 @@
 
   // ── Two-Factor (TOTP) setup ────────────────────────────────
   function show2FAFlow() {
-    if (window.TwoFA?.isEnabled?.()) {
-      // Already on — offer to disable (gated by verifyAuth so it inherits
-      // any existing TOTP/biometric protection).
+    // Hard-fail if the TOTP module didn't load — better than a silent
+    // 'nothing happens when I tap' UX, which is what the user reported.
+    if (!window.TwoFA) {
+      toast('Two-factor module failed to load — refresh the app');
+      return;
+    }
+    if (window.TwoFA.isEnabled()) {
       modal(`
         <h2>🔐 Two-Factor Enabled</h2>
         <p>Every send / stake / earn / sweep currently requires a 6-digit code from your authenticator app on top of biometric/password.</p>
@@ -527,12 +531,19 @@
     const secret = window.TwoFA.generateSecret();
     const label = (state.addresses?.BTC || 'wallet').slice(0, 12);
     const uri = window.TwoFA.buildOtpAuthUri(secret, label);
+    // Format the secret in 4-char groups so it's easier to type into apps
+    // that don't support QR scanning.
+    const secretGrouped = secret.replace(/(.{4})/g, '$1 ').trim();
     modal(`
       <h2>🔐 Set up Two-Factor</h2>
-      <p>Scan the QR code with Google Authenticator, Authy, or any TOTP app — then enter the current 6-digit code to confirm.</p>
-      <div id="ta-qr" style="display:flex;justify-content:center;margin:14px 0"></div>
-      <div style="text-align:center;font-size:11px;color:var(--text2);word-break:break-all;margin-bottom:12px">
-        Or paste this secret manually: <code style="color:var(--accent2)">${secret}</code>
+      <p style="font-size:13px">Scan with Google Authenticator, Authy, or any TOTP app — then enter the 6-digit code to confirm.</p>
+      <div id="ta-qr" style="display:flex;justify-content:center;margin:12px 0"></div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:14px">
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Or enter this secret manually:</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <code id="ta-secret" style="flex:1;font-size:13px;color:var(--accent2);word-break:break-all;font-family:ui-monospace,monospace">${secretGrouped}</code>
+          <button type="button" class="btn btn-outline btn-sm" id="ta-copy-secret" style="flex-shrink:0">Copy</button>
+        </div>
       </div>
       <div class="form-group">
         <label>Enter 6-digit code from your app</label>
@@ -546,27 +557,30 @@
         <button class="btn btn-primary" id="ta-confirm">Enable</button>
       </div>
     `, (root, close) => {
-      // Render QR code into the slot.
       const qrSlot = root.querySelector('#ta-qr');
-      if (typeof QRCode !== 'undefined') {
+      if (typeof QRCode === 'undefined') {
+        qrSlot.innerHTML = '<div style="color:var(--red);font-size:12px;text-align:center;padding:20px">QR library failed to load — use the manual secret below.</div>';
+      } else {
         new QRCode(qrSlot, {
-          text: uri, width: 200, height: 200,
+          text: uri, width: 220, height: 220,
           colorDark: '#000000', colorLight: '#ffffff',
           correctLevel: QRCode.CorrectLevel.M,
         });
       }
+      root.querySelector('#ta-copy-secret').onclick = async () => {
+        try { await navigator.clipboard.writeText(secret); toast('Secret copied'); }
+        catch { toast('Copy failed'); }
+      };
       const input = root.querySelector('#ta-code');
       const err = root.querySelector('#ta-err');
       const confirm = async () => {
         const v = input.value.replace(/\D/g, '').slice(0, 6);
         if (v.length !== 6) { err.textContent = 'Enter 6 digits'; return; }
-        // Manually verify the entered code against the candidate secret
-        // BEFORE persisting it — wrong code = bad enrollment.
         const expected = await window.TwoFA.code(secret, Date.now());
         const expectedPrev = await window.TwoFA.code(secret, Date.now() - 30000);
         const expectedNext = await window.TwoFA.code(secret, Date.now() + 30000);
         if (v !== expected && v !== expectedPrev && v !== expectedNext) {
-          err.textContent = 'Code did not match — make sure your authenticator clock is correct';
+          err.textContent = 'Code did not match — check your authenticator clock';
           input.value = '';
           return;
         }
