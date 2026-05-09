@@ -878,6 +878,7 @@ body {
 .network-base  { background: rgba(0, 82, 255, 0.20);    color: #6b91ff; }
 .network-ltc   { background: rgba(190, 190, 190, 0.16); color: #d6d6d6; }
 .network-doge  { background: rgba(194, 166, 51, 0.20);  color: #e0c45e; }
+.network-sol   { background: rgba(153, 69, 255, 0.20);  color: #c79bff; }
 
 /* ── Settings menu items ────────────────────────────────────── */
 .settings-menu-item {
