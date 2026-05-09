@@ -133,9 +133,10 @@ const Earn = (() => {
           title: action === 'deposit'
             ? `${symbol} deposited to Aave`
             : `${symbol} withdrawn from Aave`,
+          network: coin?.category,
           subtitle: action === 'deposit'
-            ? 'Now earning yield on Aave v3'
-            : 'Returned to liquid balance',
+            ? `${amt} ${symbol} now earning yield on Aave v3`
+            : `${amt} ${symbol} returned to liquid balance`,
         });
         close();
         setTimeout(refreshBalances, 5000);

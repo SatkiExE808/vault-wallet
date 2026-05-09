@@ -975,6 +975,7 @@ async function refreshBalances() {
         Inbox.add({
           type: 'receive',
           title: `${coin.symbol} deposit received`,
+          network: coin.category,
           subtitle: `+${delta.toFixed(dec)} ${coin.symbol} · now ${newBal.toFixed(dec)} ${coin.symbol}`,
         });
       }
@@ -1483,7 +1484,8 @@ document.getElementById('do-send-btn').onclick = async () => {
     if (typeof Inbox !== 'undefined') Inbox.add({
       type: 'send',
       title: `${coin.symbol} withdrawal complete`,
-      subtitle: `Sent ${amt} ${coin.symbol}`,
+      network: coin.category,
+      subtitle: `Sent ${amt} ${coin.symbol} to ${to.slice(0, 8)}…${to.slice(-6)}`,
     });
     document.getElementById('send-to').value = '';
     document.getElementById('send-amount').value = '';

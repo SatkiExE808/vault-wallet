@@ -378,7 +378,8 @@
         Inbox?.add({
           type: 'send',
           title: `${coin.symbol} withdrawal complete`,
-          subtitle: `Sent ${amt} ${coin.symbol}`,
+          network: coin.category,
+          subtitle: `Sent ${amt} ${coin.symbol} to ${to.slice(0, 8)}…${to.slice(-6)}`,
         });
         $('wd-send-to').value = '';
         $('wd-send-amount').value = '';

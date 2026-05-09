@@ -53,17 +53,22 @@ const Inbox = (() => {
     dot.style.display = unreadCount() > 0 ? '' : 'none';
   }
 
+  // Returns { date, time } so the row can stack them on two lines and
+  // always show both — user complaint was that older entries lost the
+  // wall-clock time and same-day entries lost the date.
   function formatDate(ts) {
     const d = new Date(ts);
     const now = new Date();
+    const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     const sameDay = d.toDateString() === now.toDateString();
-    if (sameDay) {
-      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    }
+    if (sameDay) return { date: 'Today', time };
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
-    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    if (d.toDateString() === yesterday.toDateString()) return { date: 'Yesterday', time };
+    return {
+      date: d.toLocaleDateString([], { month: 'short', day: 'numeric' }),
+      time,
+    };
   }
 
   function render() {
@@ -76,21 +81,27 @@ const Inbox = (() => {
       </div>`;
       return;
     }
-    list.innerHTML = items.map(it => `
-      <div class="inbox-item">
-        <div class="inbox-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-          </svg>
-        </div>
-        <div class="inbox-text">
-          <div class="inbox-title">${escapeHtml(it.title)}</div>
-          <div class="inbox-subtitle">${escapeHtml(it.subtitle || '')}</div>
-        </div>
-        <div class="inbox-date">${formatDate(it.ts)}</div>
-      </div>
-    `).join('');
+    list.innerHTML = items.map(it => {
+      const stamp = formatDate(it.ts);
+      const network = it.network ? `<span class="inbox-network">${escapeHtml(it.network)}</span>` : '';
+      return `
+        <div class="inbox-item">
+          <div class="inbox-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+          </div>
+          <div class="inbox-text">
+            <div class="inbox-title">${escapeHtml(it.title)}${network}</div>
+            <div class="inbox-subtitle">${escapeHtml(it.subtitle || '')}</div>
+          </div>
+          <div class="inbox-date">
+            <div class="inbox-date-day">${escapeHtml(stamp.date)}</div>
+            <div class="inbox-date-time">${escapeHtml(stamp.time)}</div>
+          </div>
+        </div>`;
+    }).join('');
   }
 
   function open() {

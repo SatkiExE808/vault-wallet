@@ -150,6 +150,7 @@ const Staking = (() => {
         if (typeof Inbox !== 'undefined') Inbox.add({
           type: 'stake',
           title: action === 'stake' ? 'JupSOL liquid stake complete' : 'JupSOL unstaked',
+          network: 'Solana',
           subtitle: action === 'stake'
             ? `${amt} SOL → JupSOL · earning ~7% APY`
             : `${amt} JupSOL → SOL · returned to liquid balance`,
@@ -271,6 +272,7 @@ const Staking = (() => {
         if (typeof Inbox !== 'undefined') Inbox.add({
           type: 'stake',
           title: 'SOL stake delegated',
+          network: 'Solana',
           subtitle: `${amt} SOL delegated · ~3 day activation period`,
         });
         close();

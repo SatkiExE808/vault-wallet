@@ -195,6 +195,7 @@ const TxProgress = (() => {
             Inbox.add({
               type: 'receive',
               title: `${coin.symbol} deposit received`,
+              network: coin.category,
               subtitle: `Your funds are now ready to use`,
             });
           }
