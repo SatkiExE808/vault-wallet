@@ -304,7 +304,7 @@
         delete feeRow.dataset.fee;
         const coinId = coin.id;
         estimateEvmFee(coinId).then(info => {
-          feeDisplay.textContent = `~${info.fee} ${info.symbol} · ${info.gwei} gwei`;
+          feeDisplay.textContent = `~${info.fee} ${info.symbol}`;
           feeRow.dataset.fee = info.fee;
           feeRow.dataset.feeId = info.feeId;
           feeRow.dataset.rollup = info.isRollup ? '1' : '0';
