@@ -1664,8 +1664,18 @@ document.getElementById('refresh-btn').onclick = async () => {
 };
 
 // ── Lock ──────────────────────────────────────────────────────────────────────
-document.getElementById('lock-btn').onclick = () => {
-  if (!confirm('Lock wallet? Your encrypted wallet stays on this device. Enter your password to unlock again.')) return;
+document.getElementById('lock-btn').onclick = async () => {
+  const ok = typeof confirmModal === 'function'
+    ? await confirmModal({
+        title: 'Lock Wallet',
+        lines: [
+          ['Status', 'Your encrypted wallet stays on this device.'],
+          ['Next',   'You will need your password to unlock again.'],
+        ],
+        confirmLabel: 'Lock',
+      })
+    : window.confirm('Lock wallet? Your encrypted wallet stays on this device. Enter your password to unlock again.');
+  if (!ok) return;
   clearFeeTimer();
   if (typeof TxProgress !== 'undefined') TxProgress.stop();
   if (typeof AaveEarn !== 'undefined') AaveEarn.stopApyRefresh();
