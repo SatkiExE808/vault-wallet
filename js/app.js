@@ -492,16 +492,15 @@ const COINS = [
 // ── EVM chain config — Blockscout (free, no API key) + explorer links ─────────
 const CHAIN_CONFIG = {
   ETH:       { blockscout: 'https://eth.blockscout.com',      explorer: 'https://etherscan.io' },
-  // Etherscan V2 unified API: one endpoint serves every chain via the
-  // chainid query param. Single API key (ETHERSCAN_API_KEY) authorizes
-  // all of them. Falling back to V2 because legacy per-chain endpoints
-  // (api.bscscan.com etc.) now reject unkeyed calls and Routescan
-  // doesn't cover BSC mainnet.
-  BSC:       { etherscan:  'https://api.etherscan.io/v2/api', chainId: 56,    explorer: 'https://bscscan.com' },
+  // BSC's Etherscan V2 free tier hits a "subscription required" wall, and
+  // Routescan doesn't cover BSC mainnet. Blockchair has a free public tier
+  // (no API key needed) for BSC at low request rates.
+  BSC:       { blockchair: 'binance-smart-chain',             explorer: 'https://bscscan.com' },
   POLYGON:   { blockscout: 'https://polygon.blockscout.com',  explorer: 'https://polygonscan.com' },
   AVALANCHE: { etherscan:  'https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan/api', explorer: 'https://snowtrace.io' },
   ARBITRUM:  { blockscout: 'https://arbitrum.blockscout.com', explorer: 'https://arbiscan.io' },
-  OPTIMISM:  { etherscan:  'https://api.etherscan.io/v2/api', chainId: 10,    explorer: 'https://optimistic.etherscan.io' },
+  // Optimism: same situation as BSC. Blockchair covers it free.
+  OPTIMISM:  { blockchair: 'optimism',                        explorer: 'https://optimistic.etherscan.io' },
   BASE:      { blockscout: 'https://base.blockscout.com',     explorer: 'https://basescan.org' },
 };
 
@@ -573,9 +572,53 @@ async function _etherscanHistory(addr, apiBase, explorer, tokenAddr, decimals, c
   }));
 }
 
+// Blockchair adapter — used for chains where Etherscan V2 free tier
+// gates behind a subscription (BSC, Optimism). Free tier: ~30 req/min
+// per IP without an API key. Two API hits per call: one to list tx
+// hashes, one batched call to fetch details for amount/direction.
+async function _blockchairHistory(addr, chain, explorer, tokenAddr, decimals) {
+  const lower = addr.toLowerCase();
+  const listUrl = `https://api.blockchair.com/${chain}/dashboards/address/${addr}?limit=20`;
+  const r1 = await fetch(listUrl, { signal: AbortSignal.timeout(15000) });
+  if (!r1.ok) throw new Error(`Blockchair HTTP ${r1.status}`);
+  const j1 = await r1.json();
+  const data = j1.data?.[lower] || j1.data?.[addr];
+  if (!data) return [];
+  const hashes = (data.transactions || []).slice(0, 20);
+  if (!hashes.length) return [];
+  const detailsUrl = `https://api.blockchair.com/${chain}/dashboards/transactions/${hashes.join(',')}`;
+  const r2 = await fetch(detailsUrl, { signal: AbortSignal.timeout(15000) });
+  if (!r2.ok) {
+    // Fall back to bare hash list if the batched details call fails.
+    return hashes.map(h => ({
+      hash: h, type: 'send', amount: '—', time: null,
+      confirmed: true, status: 'ok',
+      explorerUrl: `${explorer}/tx/${h}`,
+    }));
+  }
+  const j2 = await r2.json();
+  const out = [];
+  for (const h of hashes) {
+    const entry = j2.data?.[h];
+    const t = entry?.transaction;
+    if (!t) continue;
+    out.push({
+      hash: t.hash || h,
+      type: (t.sender || '').toLowerCase() === lower ? 'send' : 'receive',
+      amount: parseFloat(ethers.formatEther(String(t.value || '0'))).toFixed(6),
+      time: t.time ? new Date(t.time + 'Z').getTime() : null,
+      confirmed: !t.failed,
+      status: t.failed ? 'error' : 'ok',
+      explorerUrl: `${explorer}/tx/${t.hash || h}`,
+    });
+  }
+  return out;
+}
+
 async function fetchEvmHistory(addr, chainKey, tokenAddr, decimals) {
   const cfg = CHAIN_CONFIG[chainKey];
   if (!cfg) return [];
+  if (cfg.blockchair) return _blockchairHistory(addr, cfg.blockchair, cfg.explorer, tokenAddr, decimals);
   if (cfg.blockscout) return _blockscoutHistory(addr, cfg.blockscout, cfg.explorer, tokenAddr, decimals);
   return _etherscanHistory(addr, cfg.etherscan, cfg.explorer, tokenAddr, decimals, cfg.chainId);
 }
