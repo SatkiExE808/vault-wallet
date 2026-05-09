@@ -1039,11 +1039,106 @@ body {
   min-width: 0;
 }
 .confirm-value-code {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text2);
-  letter-spacing: -0.2px;
+  /* Match the other rows exactly — same size, weight and color.
+     We drop the monospace + smaller text so the address row reads as
+     one consistent value with Amount / Network fee rather than as a
+     separate 'code' style. word-break in .confirm-value handles wrap. */
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  letter-spacing: 0;
+}
+
+/* ── Send-form recipient address input + Paste / Scan icon buttons ── */
+.addr-input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.addr-input-group input {
+  /* Leave room on the right for the two 38px icon buttons + gaps */
+  padding-right: 88px !important;
+}
+.addr-icon-btn {
+  position: absolute;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, transform 0.1s, color 0.15s;
+}
+.addr-icon-btn svg { width: 18px; height: 18px; }
+.addr-icon-btn:active {
+  transform: scale(0.92);
+  background: var(--surface3);
+  color: var(--accent2);
+}
+.addr-icon-btn:nth-of-type(1) { right: 46px; }
+.addr-icon-btn:nth-of-type(2) { right: 6px; }
+
+/* ── QR camera scanner overlay ─────────────────────────────────── */
+.qr-scanner-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qr-scanner-overlay video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.qrs-frame {
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  pointer-events: none;
+}
+/* Four corner brackets — scanner-style viewfinder. */
+.qrs-corner {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border: 4px solid var(--accent);
+  box-shadow: 0 0 16px rgba(249,115,22,0.6);
+}
+.qrs-tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 12px; }
+.qrs-tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 12px; }
+.qrs-bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 12px; }
+.qrs-br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 12px; }
+.qrs-hint {
+  position: absolute;
+  bottom: calc(100px + var(--sa-bot));
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+  padding: 0 20px;
+}
+.qrs-cancel {
+  position: absolute;
+  bottom: calc(40px + var(--sa-bot));
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255,255,255,0.95);
+  color: #000;
+  border: none;
+  font-weight: 600;
+  padding: 10px 28px;
 }
 
 /* ── QR camera scanner overlay ─────────────────────────────────── */

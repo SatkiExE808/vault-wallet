@@ -1345,21 +1345,45 @@ function validateAddress(address, coinId) {
 // ── Send ──────────────────────────────────────────────────────────────────────
 // Paste / Scan recipient address. Reuses QrScanner.extractAddress to strip
 // any URI prefix (bitcoin:, ethereum:, etc.).
-document.getElementById('paste-addr').onclick = async () => {
+async function pasteAddress(inputEl) {
+  // Capacitor / iOS WebViews and many Android builds block
+  // navigator.clipboard.readText() unless the page is focused AND the host
+  // app has clipboard permission. Try the modern API first, then fall back
+  // to focusing the field and instructing the user to long-press paste.
   try {
-    const text = await navigator.clipboard.readText();
-    const cleaned = window.QrScanner ? QrScanner.extractAddress(text) : (text || '').trim();
-    if (!cleaned) { toast('Clipboard is empty'); return; }
-    document.getElementById('send-to').value = cleaned;
-  } catch { toast('Paste failed — clipboard access denied'); }
-};
-document.getElementById('scan-addr').onclick = async () => {
+    if (navigator.clipboard?.readText) {
+      const text = await navigator.clipboard.readText();
+      const cleaned = window.QrScanner ? QrScanner.extractAddress(text) : (text || '').trim();
+      if (!cleaned) { toast('Clipboard is empty'); return; }
+      inputEl.value = cleaned;
+      return;
+    }
+  } catch { /* fall through */ }
+  // Fallback: focus + select so the user can long-press → Paste from the
+  // native context menu. We can't trigger it programmatically.
+  inputEl.focus();
+  inputEl.select();
+  toast('Long-press the address field, then tap Paste');
+}
+async function scanAddress(inputEl) {
   if (!window.QrScanner) { toast('Scanner unavailable'); return; }
   try {
     const text = await QrScanner.open();
-    document.getElementById('send-to').value = QrScanner.extractAddress(text);
-  } catch (e) { if (e.message !== 'Cancelled') toast(e.message || 'Scan failed'); }
-};
+    inputEl.value = QrScanner.extractAddress(text);
+  } catch (e) {
+    if (e.message === 'Cancelled') return;
+    if ((e.message || '').toLowerCase().includes('permission')) {
+      toast('Camera blocked — paste the address with the clipboard button instead');
+    } else {
+      toast(e.message || 'Scan failed');
+    }
+  }
+}
+document.getElementById('paste-addr').onclick = () => pasteAddress(document.getElementById('send-to'));
+document.getElementById('scan-addr').onclick = () => scanAddress(document.getElementById('send-to'));
+// Expose so home.js's wallet-view send can reuse the same logic.
+window.pasteAddress = pasteAddress;
+window.scanAddress = scanAddress;
 
 document.getElementById('send-max-btn').onclick = () => {
   const coin = COINS.find(c => c.id === state.active);

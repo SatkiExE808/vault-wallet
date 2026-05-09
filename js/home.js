@@ -298,22 +298,10 @@
       requestAnimationFrame(() => $('wd-send-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
     };
 
-    // Paste / Scan address shortcuts. Both extract a clean address from
-    // common URI forms (bitcoin:..., ethereum:..., etc.).
-    $('wd-paste-addr').onclick = async () => {
-      try {
-        const text = await navigator.clipboard.readText();
-        const cleaned = QrScanner.extractAddress(text);
-        if (!cleaned) { toast('Clipboard is empty'); return; }
-        $('wd-send-to').value = cleaned;
-      } catch { toast('Paste failed — clipboard access denied'); }
-    };
-    $('wd-scan-addr').onclick = async () => {
-      try {
-        const text = await QrScanner.open();
-        $('wd-send-to').value = QrScanner.extractAddress(text);
-      } catch (e) { if (e.message !== 'Cancelled') toast(e.message || 'Scan failed'); }
-    };
+    // Paste / Scan — share the implementation with the coin-detail send
+    // path (see app.js) so error handling stays consistent.
+    $('wd-paste-addr').onclick = () => window.pasteAddress?.($('wd-send-to'));
+    $('wd-scan-addr').onclick  = () => window.scanAddress?.($('wd-send-to'));
 
     // Max button
     $('wd-send-max').onclick = () => {
