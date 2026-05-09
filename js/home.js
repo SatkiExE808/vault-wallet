@@ -200,6 +200,8 @@
         clearFeeTimer();
         return;
       }
+      // Close history if open
+      $('wd-history-list').style.display = 'none';
       form.style.display = 'block';
       // Sync state: select this coin so app.js helpers (validateAddress, send, fee) work
       selectCoin(coin.id);
@@ -280,14 +282,67 @@
       }
     };
 
-    $('wd-history').onclick = () => {
+    // History toggle — renders inline list right in the wallet view
+    $('wd-history-toggle').onclick = async () => {
+      const histDiv = $('wd-history-list');
+      const visible = histDiv.style.display !== 'none';
+      if (visible) { histDiv.style.display = 'none'; return; }
+      // Close send form if open
+      $('wd-send-form').style.display = 'none';
+
+      histDiv.style.display = 'block';
+      histDiv.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:8px 0">Loading…</p>`;
+      // Sync state so updateHistoryTab uses the right coin, then render into our div
       selectCoin(coin.id);
-      showView('coin');
-      if (typeof window.openAction === 'function') window.openAction('history');
+      try {
+        if (!coin.history) {
+          const url = coin.explorerAddr ? coin.explorerAddr(state.addresses[coin.id]) : '';
+          histDiv.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:8px 0">History not available for ${coin.name}.</p>
+            ${url ? `<button class="btn btn-outline btn-sm wd-explorer-btn" data-url="${url}" style="margin-top:6px">View address on explorer ↗</button>` : ''}`;
+        } else {
+          const txs = await coin.history(state.addresses[coin.id]);
+          if (!txs || txs.length === 0) {
+            const url = coin.explorerAddr ? coin.explorerAddr(state.addresses[coin.id]) : '';
+            histDiv.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:8px 0">No transactions yet.</p>
+              ${url ? `<button class="btn btn-outline btn-sm wd-explorer-btn" data-url="${url}" style="margin-top:6px">View on explorer ↗</button>` : ''}`;
+          } else {
+            histDiv.innerHTML = txs.map(tx => {
+              const send = tx.type === 'send';
+              const time = tx.time ? timeAgo(tx.time) : 'Pending';
+              const url  = tx.explorerUrl || '';
+              const st   = tx.status || (tx.confirmed ? 'ok' : 'pending');
+              const stColor = st === 'error' ? '#ef4444' : st === 'pending' ? '#eab308' : '#22c55e';
+              const stLabel = st === 'error' ? 'Failed' : st === 'pending' ? 'Pending' : 'OK';
+              return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+                <div style="width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
+                  justify-content:center;font-size:14px;
+                  background:${send ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)'};
+                  color:${send ? '#ef4444' : '#22c55e'}">${send ? '↑' : '↓'}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:13px;font-weight:600">${send ? 'Sent' : 'Received'} ${tx.amount} ${coin.symbol}</div>
+                  <div style="font-size:11px;color:var(--text2);margin-top:2px">
+                    <span>${time}</span>
+                    <span style="color:${stColor};margin-left:6px">• ${stLabel}</span>
+                  </div>
+                </div>
+                ${url ? `<button class="btn btn-outline btn-sm wd-explorer-btn" data-url="${url}"
+                  style="padding:5px 9px;font-size:11px;flex-shrink:0">↗</button>` : ''}
+              </div>`;
+            }).join('');
+          }
+        }
+      } catch (e) {
+        histDiv.innerHTML = `<p style="color:var(--red);font-size:13px;padding:8px 0">Failed: ${e.message}</p>`;
+      }
+      histDiv.querySelectorAll('.wd-explorer-btn').forEach(btn => {
+        btn.onclick = () => openExternal(btn.dataset.url);
+      });
+      requestAnimationFrame(() => histDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
     };
 
-    // Hide the send form when switching coins
+    // Hide forms when switching coins
     $('wd-send-form').style.display = 'none';
+    $('wd-history-list').style.display = 'none';
 
     // Highlight selected coin in the picker list
     document.querySelectorAll('#wallet-asset-list .asset-item').forEach(el => {

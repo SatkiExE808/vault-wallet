@@ -82,7 +82,7 @@
 
         <div class="balance-actions">
           <button class="btn btn-primary" id="wd-send-toggle">↑ Send</button>
-          <button class="btn btn-outline" id="wd-history">⊟ History</button>
+          <button class="btn btn-outline" id="wd-history-toggle">⊟ History</button>
         </div>
 
         <!-- Inline send form (hidden until Send is tapped) -->
@@ -104,6 +104,9 @@
           </div>
           <button class="btn btn-primary" id="wd-do-send" style="width:100%">Send</button>
         </div>
+
+        <!-- Inline history list (hidden until History is tapped) -->
+        <div id="wd-history-list" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);text-align:left"></div>
       </div>
 
       <div class="section-h" style="padding-top:8px"><h2>Choose another wallet</h2></div>
