@@ -107,7 +107,16 @@ const Earn = (() => {
       const amt = root.querySelector('#ern-amount').value.trim();
       if (!amt || parseFloat(amt) <= 0) { errDiv.textContent = 'Enter a valid amount'; return; }
       const verb = action === 'deposit' ? 'deposit' : 'withdraw';
-      if (!confirm(`Confirm ${verb} ${amt} ${symbol}?${action === 'deposit' ? '\n\nFirst-time deposits include a one-time approval transaction.' : ''}`)) return;
+      const okConfirm = await confirmModal({
+        title: action === 'deposit' ? `Deposit to Aave` : `Withdraw from Aave`,
+        lines: [
+          ['Amount', `${amt} ${symbol}`],
+          ['Pool', `Aave v3`],
+          ...(action === 'deposit' ? [['Note', 'First-time deposits include a one-time approval transaction']] : []),
+        ],
+        confirmLabel: action === 'deposit' ? 'Deposit' : 'Withdraw',
+      });
+      if (!okConfirm) return;
       if (typeof verifyAuth === 'function') {
         try { await verifyAuth(`Confirm ${verb}`); } catch { toast('Cancelled'); return; }
       }

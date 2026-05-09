@@ -130,7 +130,13 @@ const Staking = (() => {
       const amt = root.querySelector('#stk-jup-amount').value.trim();
       if (!amt || parseFloat(amt) <= 0) { errDiv.textContent = 'Enter a valid amount'; return; }
       const verb = action === 'stake' ? 'stake' : 'unstake';
-      if (!confirm(`Confirm ${verb} ${amt} ${action === 'stake' ? 'SOL' : 'JupSOL'}?`)) return;
+      const symLine = action === 'stake' ? 'SOL' : 'JupSOL';
+      const okConfirm = await confirmModal({
+        title: action === 'stake' ? 'Liquid Stake (JupSOL)' : 'Unstake JupSOL',
+        lines: [['Amount', `${amt} ${symLine}`], ['Action', verb]],
+        confirmLabel: action === 'stake' ? 'Stake' : 'Unstake',
+      });
+      if (!okConfirm) return;
       if (typeof verifyAuth === 'function') {
         try { await verifyAuth(`Confirm ${verb}`); } catch { toast('Cancelled'); return; }
       }
@@ -219,7 +225,12 @@ const Staking = (() => {
         btn.onclick = async () => {
           const action = btn.dataset.act, accPub = btn.dataset.acc;
           const verb = action === 'deactivate' ? 'unstake' : 'withdraw';
-          if (!confirm(`Confirm ${verb}?`)) return;
+          const okStakeAcc = await confirmModal({
+            title: action === 'deactivate' ? 'Unstake' : 'Withdraw',
+            lines: [['Stake account', accPub, { code: true }], ['Action', verb]],
+            confirmLabel: action === 'deactivate' ? 'Unstake' : 'Withdraw',
+          });
+          if (!okStakeAcc) return;
           if (typeof verifyAuth === 'function') {
             try { await verifyAuth(`Confirm ${verb}`); } catch { toast('Cancelled'); return; }
           }
@@ -243,7 +254,12 @@ const Staking = (() => {
       if (!validator) { errDiv.textContent = 'Enter a validator vote address'; return; }
       if (!amt || parseFloat(amt) <= 0) { errDiv.textContent = 'Enter a valid amount'; return; }
       try { new solanaWeb3.PublicKey(validator); } catch { errDiv.textContent = 'Invalid validator address'; return; }
-      if (!confirm(`Stake ${amt} SOL to ${validator.slice(0,10)}…?`)) return;
+      const okStake = await confirmModal({
+        title: 'Confirm Stake',
+        lines: [['Amount', `${amt} SOL`], ['Validator', validator, { code: true }], ['Unbonding', '~3 days after unstake']],
+        confirmLabel: 'Stake',
+      });
+      if (!okStake) return;
       if (typeof verifyAuth === 'function') {
         try { await verifyAuth(`Stake ${amt} SOL`); } catch { toast('Cancelled'); return; }
       }
@@ -379,7 +395,12 @@ const Staking = (() => {
         const amt = root.querySelector('#stk-amount').value.trim();
         if (!amt || parseFloat(amt) <= 0) { errDiv.textContent = 'Enter a valid amount'; return; }
         const verb = action === 'freeze' ? 'stake' : 'unstake';
-        if (!confirm(`Confirm ${verb} ${amt} TRX?`)) return;
+        const okFreeze = await confirmModal({
+          title: action === 'freeze' ? 'Stake TRX' : 'Unstake TRX',
+          lines: [['Amount', `${amt} TRX`], ['Resource', resource], ...(action === 'unfreeze' ? [['Unbonding', '14 days']] : [])],
+          confirmLabel: action === 'freeze' ? 'Stake' : 'Unstake',
+        });
+        if (!okFreeze) return;
         if (typeof verifyAuth === 'function') {
           try { await verifyAuth(`Confirm ${verb}`); } catch { toast('Cancelled'); return; }
         }
@@ -395,7 +416,12 @@ const Staking = (() => {
       }
 
       if (action === 'withdraw') {
-        if (!confirm('Withdraw expired unfrozen TRX?')) return;
+        const okWithdraw = await confirmModal({
+          title: 'Withdraw Expired TRX',
+          lines: [['Action', 'Sweep all expired unfrozen TRX back to your liquid balance']],
+          confirmLabel: 'Withdraw',
+        });
+        if (!okWithdraw) return;
         if (typeof verifyAuth === 'function') {
           try { await verifyAuth('Withdraw expired'); } catch { toast('Cancelled'); return; }
         }
@@ -416,7 +442,12 @@ const Staking = (() => {
         if (count > voting.tronPowerAvailable) {
           errDiv.textContent = `Only ${voting.tronPowerAvailable.toFixed(0)} TP available. Freeze more TRX to gain TP.`; return;
         }
-        if (!confirm(`Vote ${count} TP for ${srAddr.slice(0,6)}…${srAddr.slice(-4)}?\n\nThis adds to your existing votes.`)) return;
+        const okVote = await confirmModal({
+          title: 'Vote for SR',
+          lines: [['SR address', srAddr, { code: true }], ['TRON Power', `${count} TP`], ['Note', 'Adds to existing votes (does not replace)']],
+          confirmLabel: 'Vote',
+        });
+        if (!okVote) return;
         if (typeof verifyAuth === 'function') {
           try { await verifyAuth('Confirm vote'); } catch { toast('Cancelled'); return; }
         }
@@ -431,7 +462,12 @@ const Staking = (() => {
 
       if (action === 'claim') {
         if (voting.claimableRewards <= 0) { errDiv.textContent = 'Nothing to claim'; return; }
-        if (!confirm(`Claim ${voting.claimableRewards.toFixed(6)} TRX in rewards?`)) return;
+        const okClaim = await confirmModal({
+          title: 'Claim Rewards',
+          lines: [['Amount', `${voting.claimableRewards.toFixed(6)} TRX`], ['Cooldown', '24h between claims']],
+          confirmLabel: 'Claim',
+        });
+        if (!okClaim) return;
         if (typeof verifyAuth === 'function') {
           try { await verifyAuth('Claim rewards'); } catch { toast('Cancelled'); return; }
         }
