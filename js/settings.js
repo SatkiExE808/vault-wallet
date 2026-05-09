@@ -177,7 +177,7 @@
             // encrypted with a random key. The plugin's authenticate() prompt is
             // the gate to retrieving them on unlock.
             const native = getNativePlugin();
-            await native.authenticate({
+            await native.internalAuthenticate({
               reason: 'Enable biometric unlock for Vault',
               cancelTitle: 'Cancel',
               androidTitle: 'Vault Wallet',
@@ -248,7 +248,7 @@
     if (method === 'native') {
       const native = getNativePlugin();
       if (!native) throw new Error('Native biometric plugin not available — reinstall app');
-      await native.authenticate({
+      await native.internalAuthenticate({
         reason: 'Unlock Vault wallet',
         cancelTitle: 'Cancel',
         androidTitle: 'Unlock Vault',
