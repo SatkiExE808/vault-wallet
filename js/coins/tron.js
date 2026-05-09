@@ -94,5 +94,67 @@ const TronWallet = (() => {
     }));
   }
 
-  return { getTRXBalance, getUSDTBalance, sendUSDT, sendTRX, privateKeyToTronAddress, deriveAddress, derivePrivateKey, getTRXHistory, getUSDTHistory };
+  // ── Native staking (Stake 2.0 / TIP-491) ──────────────────────────
+  // Freeze TRX to gain ENERGY (cheap USDT transfers) or BANDWIDTH.
+  // Unbonding period: 14 days.
+  async function getStakeInfo(address) {
+    try {
+      const tw = getTronWeb();
+      const acc = await tw.trx.getAccount(address);
+      const byResource = { ENERGY: 0, BANDWIDTH: 0 };
+      for (const f of (acc.frozenV2 || [])) {
+        const key = (f.type === 'ENERGY' || f.type === 1) ? 'ENERGY' : 'BANDWIDTH';
+        byResource[key] += Number(f.amount || 0);
+      }
+      const pending = (acc.unfrozenV2 || []).map(u => ({
+        amount: Number(u.unfreeze_amount || 0) / 1e6,
+        expireMs: Number(u.unfreeze_expire_time || 0),
+        resource: (u.type === 'ENERGY' || u.type === 1) ? 'ENERGY' : 'BANDWIDTH',
+      }));
+      return {
+        energy: byResource.ENERGY / 1e6,
+        bandwidth: byResource.BANDWIDTH / 1e6,
+        totalFrozen: (byResource.ENERGY + byResource.BANDWIDTH) / 1e6,
+        pending,
+      };
+    } catch { return { energy: 0, bandwidth: 0, totalFrozen: 0, pending: [] }; }
+  }
+
+  async function _signAndBroadcast(tw, unsigned) {
+    const signed = await tw.trx.sign(unsigned);
+    const result = await tw.trx.sendRawTransaction(signed);
+    if (result.code) throw new Error(result.message || result.code);
+    return result.txid || result.transaction?.txID;
+  }
+
+  async function freezeTRX(mnemonic, amount, resource = 'ENERGY') {
+    const pk = await derivePrivateKey(mnemonic);
+    const tw = getTronWeb(pk);
+    const owner = privateKeyToTronAddress(pk);
+    const sun = Math.floor(Number(amount) * 1e6);
+    if (!Number.isFinite(sun) || sun <= 0) throw new Error('Invalid amount');
+    const unsigned = await tw.transactionBuilder.freezeBalanceV2(sun, resource, owner);
+    return _signAndBroadcast(tw, unsigned);
+  }
+
+  async function unfreezeTRX(mnemonic, amount, resource = 'ENERGY') {
+    const pk = await derivePrivateKey(mnemonic);
+    const tw = getTronWeb(pk);
+    const owner = privateKeyToTronAddress(pk);
+    const sun = Math.floor(Number(amount) * 1e6);
+    if (!Number.isFinite(sun) || sun <= 0) throw new Error('Invalid amount');
+    const unsigned = await tw.transactionBuilder.unfreezeBalanceV2(sun, resource, owner);
+    return _signAndBroadcast(tw, unsigned);
+  }
+
+  async function withdrawUnfrozenTRX(mnemonic) {
+    const pk = await derivePrivateKey(mnemonic);
+    const tw = getTronWeb(pk);
+    const owner = privateKeyToTronAddress(pk);
+    const unsigned = await tw.transactionBuilder.withdrawExpireUnfreeze(owner);
+    return _signAndBroadcast(tw, unsigned);
+  }
+
+  return { getTRXBalance, getUSDTBalance, sendUSDT, sendTRX, privateKeyToTronAddress, deriveAddress, derivePrivateKey, getTRXHistory, getUSDTHistory,
+           getStakeInfo, freezeTRX, unfreezeTRX, withdrawUnfrozenTRX };
 })();

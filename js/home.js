@@ -212,6 +212,18 @@
     // Wire actions
     $('wd-copy').onclick = () => navigator.clipboard.writeText(addr).then(() => toast('Address copied'));
 
+    // Show / hide Stake button for stakable coins (SOL, TRX)
+    const stakeBtn = $('wd-stake-toggle');
+    const actionsRow = $('wd-balance-actions');
+    if (coin.canStake && typeof openStakeModal === 'function') {
+      stakeBtn.style.display = '';
+      actionsRow?.classList.add('has-stake');
+      stakeBtn.onclick = () => openStakeModal(coin.id);
+    } else {
+      stakeBtn.style.display = 'none';
+      actionsRow?.classList.remove('has-stake');
+    }
+
     // Send toggle — shows the inline send form right in the wallet view
     $('wd-send-toggle').onclick = () => {
       const form = $('wd-send-form');
