@@ -133,7 +133,10 @@
   //  1. Capacitor app → use @aparajita/capacitor-biometric-auth native plugin
   //  2. Browser PWA   → fall back to WebAuthn
   function getNativePlugin() {
-    return window.Capacitor?.Plugins?.BiometricAuth || null;
+    // Plugin registers itself on the Capacitor bridge as "BiometricAuthNative"
+    return window.Capacitor?.Plugins?.BiometricAuthNative
+        || window.Capacitor?.Plugins?.BiometricAuth
+        || null;
   }
 
   async function biometricSupported() {
