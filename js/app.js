@@ -492,11 +492,14 @@ const COINS = [
 // ── EVM chain config — Blockscout (free, no API key) + explorer links ─────────
 const CHAIN_CONFIG = {
   ETH:       { blockscout: 'https://eth.blockscout.com',      explorer: 'https://etherscan.io' },
-  BSC:       { blockscout: 'https://bsc.blockscout.com',      explorer: 'https://bscscan.com' },
+  // BSC and Optimism Blockscout instances are unreliable — Routescan
+  // exposes the same chains via an Etherscan-compatible API and doesn't
+  // require an API key. Same pattern AVAX has used since launch.
+  BSC:       { etherscan:  'https://api.routescan.io/v2/network/mainnet/evm/56/etherscan/api', explorer: 'https://bscscan.com' },
   POLYGON:   { blockscout: 'https://polygon.blockscout.com',  explorer: 'https://polygonscan.com' },
   AVALANCHE: { etherscan:  'https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan/api', explorer: 'https://snowtrace.io' },
   ARBITRUM:  { blockscout: 'https://arbitrum.blockscout.com', explorer: 'https://arbiscan.io' },
-  OPTIMISM:  { blockscout: 'https://optimism.blockscout.com', explorer: 'https://optimistic.etherscan.io' },
+  OPTIMISM:  { etherscan:  'https://api.routescan.io/v2/network/mainnet/evm/10/etherscan/api', explorer: 'https://optimistic.etherscan.io' },
   BASE:      { blockscout: 'https://base.blockscout.com',     explorer: 'https://basescan.org' },
 };
 
