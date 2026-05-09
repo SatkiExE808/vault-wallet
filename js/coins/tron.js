@@ -155,6 +155,76 @@ const TronWallet = (() => {
     return _signAndBroadcast(tw, unsigned);
   }
 
+  // ── SR voting & rewards ──────────────────────────────────────────
+  // Each frozen TRX gives 1 TRON Power that can be allocated across
+  // Super Representatives. Voting earns ~3–5% APY claimable via
+  // withdrawBlockRewards (24h cooldown between claims).
+  async function getVotingInfo(address) {
+    try {
+      const tw = getTronWeb();
+      const [acc, rewardSun] = await Promise.all([
+        tw.trx.getAccount(address),
+        tw.trx.getReward(address).catch(() => 0),
+      ]);
+      const tronPower = (acc.frozenV2 || []).reduce((s, f) => s + Number(f.amount || 0), 0) / 1e6;
+      const votesUsed = (acc.votes || []).reduce((s, v) => s + Number(v.vote_count || 0), 0);
+      const currentVotes = (acc.votes || []).map(v => ({
+        srAddress: TronWeb.address.fromHex(v.vote_address),
+        voteCount: Number(v.vote_count),
+      }));
+      return {
+        tronPower,
+        tronPowerUsed: votesUsed,
+        tronPowerAvailable: Math.max(0, tronPower - votesUsed),
+        currentVotes,
+        claimableRewards: Number(rewardSun) / 1e6,
+      };
+    } catch { return { tronPower: 0, tronPowerUsed: 0, tronPowerAvailable: 0, currentVotes: [], claimableRewards: 0 }; }
+  }
+
+  // Stacks a new vote on top of existing ones. TRON's vote() overwrites
+  // all votes, so we merge with the current set to preserve them.
+  async function voteForSR(mnemonic, srAddress, voteCount) {
+    const pk = await derivePrivateKey(mnemonic);
+    const tw = getTronWeb(pk);
+    const owner = privateKeyToTronAddress(pk);
+    const acc = await tw.trx.getAccount(owner);
+    const merged = {};
+    for (const v of (acc.votes || [])) {
+      const addr = TronWeb.address.fromHex(v.vote_address);
+      merged[addr] = Number(v.vote_count || 0);
+    }
+    const count = Math.floor(Number(voteCount));
+    if (!Number.isFinite(count) || count <= 0) throw new Error('Invalid vote count');
+    merged[srAddress] = (merged[srAddress] || 0) + count;
+    const unsigned = await tw.transactionBuilder.vote(merged, owner);
+    return _signAndBroadcast(tw, unsigned);
+  }
+
+  // Replace all current votes with a fresh allocation. Pass an empty
+  // object to clear all votes.
+  async function setVotes(mnemonic, votesObj) {
+    const pk = await derivePrivateKey(mnemonic);
+    const tw = getTronWeb(pk);
+    const owner = privateKeyToTronAddress(pk);
+    const sanitized = {};
+    for (const [addr, count] of Object.entries(votesObj || {})) {
+      const c = Math.floor(Number(count));
+      if (c > 0) sanitized[addr] = c;
+    }
+    const unsigned = await tw.transactionBuilder.vote(sanitized, owner);
+    return _signAndBroadcast(tw, unsigned);
+  }
+
+  async function claimRewards(mnemonic) {
+    const pk = await derivePrivateKey(mnemonic);
+    const tw = getTronWeb(pk);
+    const owner = privateKeyToTronAddress(pk);
+    const unsigned = await tw.transactionBuilder.withdrawBlockRewards(owner);
+    return _signAndBroadcast(tw, unsigned);
+  }
+
   return { getTRXBalance, getUSDTBalance, sendUSDT, sendTRX, privateKeyToTronAddress, deriveAddress, derivePrivateKey, getTRXHistory, getUSDTHistory,
-           getStakeInfo, freezeTRX, unfreezeTRX, withdrawUnfrozenTRX };
+           getStakeInfo, freezeTRX, unfreezeTRX, withdrawUnfrozenTRX,
+           getVotingInfo, voteForSR, setVotes, claimRewards };
 })();
