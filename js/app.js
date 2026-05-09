@@ -433,9 +433,12 @@ const COINS = [
   },
 
   // ── Solana ──
+  // The cryptocurrency-icons CDN ships an outdated pre-rebrand SOL logo.
+  // CoinGecko hosts the current gradient-bars logo at a stable URL.
   {
     id: 'SOL', name: 'Solana', symbol: 'SOL', category: 'Solana',
-    icon: `${CDN}/sol.svg`, color: '#9945ff', networkClass: 'network-sol',
+    icon: 'https://assets.coingecko.com/coins/images/4128/large/solana.png',
+    color: '#9945ff', networkClass: 'network-sol',
     derive:  m    => SolanaWallet.deriveAddress(m),
     balance: addr => SolanaWallet.getBalance(addr),
     canSend: true, defaultEnabled: false, canStake: true,
@@ -581,28 +584,62 @@ const PRICE_IDS = {
   SOL:        'solana',
 };
 
+// User-selectable display currency. Whatever's stored here is sent to
+// CoinGecko as vs_currency and used by Intl.NumberFormat for the symbol.
+const CURRENCIES = ['usd','eur','gbp','jpy','cny','inr','idr','php','myr','sgd','aud','cad','krw','thb'];
+function getDisplayCurrency() {
+  const c = (localStorage.getItem('vault.currency') || 'usd').toLowerCase();
+  return CURRENCIES.includes(c) ? c : 'usd';
+}
+function setDisplayCurrency(c) {
+  c = String(c).toLowerCase();
+  if (!CURRENCIES.includes(c)) return;
+  localStorage.setItem('vault.currency', c);
+  // Re-fetch in the new currency and redraw — UI updates silently.
+  fetchPrices().then(() => {
+    if (typeof updateHome === 'function') updateHome();
+    if (typeof updateBalCard === 'function') updateBalCard();
+  }).catch(() => {});
+}
+window.getDisplayCurrency = getDisplayCurrency;
+window.setDisplayCurrency = setDisplayCurrency;
+
+// Formats a (balance × price) as a localized fiat string using the user's
+// chosen display currency. Kept the legacy name `formatUSD` because it's
+// referenced from many call sites — the body now respects whatever
+// currency the user picked.
 function formatUSD(balStr, price) {
   if (!price || !balStr || balStr === '…' || balStr === '—') return '';
   const bal = parseFloat(balStr);
   if (isNaN(bal) || bal < 0) return '';
-  const usd = bal * price;
-  if (usd === 0) return '$0.00';
-  if (usd < 0.01) return '<$0.01';
-  if (usd < 1000) return '$' + usd.toFixed(2);
-  return '$' + usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const value = bal * price;
+  const ccy = getDisplayCurrency().toUpperCase();
+  // JPY / KRW / IDR / VND have 0 fraction digits in their conventional
+  // formatting; everything else uses 2.
+  const noDecimals = new Set(['JPY','KRW','IDR','VND']);
+  const digits = noDecimals.has(ccy) ? 0 : 2;
+  const fmt = (n) => new Intl.NumberFormat(undefined, {
+    style: 'currency', currency: ccy, minimumFractionDigits: digits, maximumFractionDigits: digits,
+  }).format(n);
+  if (value === 0) return fmt(0);
+  // Tiny-amount sentinel that matches the fiat's natural precision.
+  const tiny = digits === 0 ? 1 : 0.01;
+  if (value < tiny) return '<' + fmt(tiny);
+  return fmt(value);
 }
 
 async function fetchPrices() {
   const ids = [...new Set(Object.values(PRICE_IDS))].join(',');
+  const ccy = getDisplayCurrency();
   try {
     const r = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`,
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=${ccy}`,
       { signal: AbortSignal.timeout(10000) }
     );
     if (!r.ok) return;
     const data = await r.json();
     for (const [coinId, cgId] of Object.entries(PRICE_IDS)) {
-      if (data[cgId]?.usd != null) state.prices[coinId] = data[cgId].usd;
+      if (data[cgId]?.[ccy] != null) state.prices[coinId] = data[cgId][ccy];
     }
     updateBalCard();
     getActiveCoins().forEach(c => updateSidebarBal(c.id));

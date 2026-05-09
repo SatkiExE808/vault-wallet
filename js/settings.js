@@ -458,16 +458,72 @@
     }
   }
 
+  // ── Display Currency picker ────────────────────────────────
+  const CURRENCY_OPTIONS = [
+    { code: 'usd', label: 'US Dollar' },
+    { code: 'eur', label: 'Euro' },
+    { code: 'gbp', label: 'British Pound' },
+    { code: 'jpy', label: 'Japanese Yen' },
+    { code: 'cny', label: 'Chinese Yuan' },
+    { code: 'inr', label: 'Indian Rupee' },
+    { code: 'idr', label: 'Indonesian Rupiah' },
+    { code: 'php', label: 'Philippine Peso' },
+    { code: 'myr', label: 'Malaysian Ringgit' },
+    { code: 'sgd', label: 'Singapore Dollar' },
+    { code: 'thb', label: 'Thai Baht' },
+    { code: 'aud', label: 'Australian Dollar' },
+    { code: 'cad', label: 'Canadian Dollar' },
+    { code: 'krw', label: 'Korean Won' },
+  ];
+
+  function refreshCurrencyLabel() {
+    const el = document.getElementById('menu-currency-value');
+    if (!el) return;
+    const ccy = (window.getDisplayCurrency?.() || 'usd').toUpperCase();
+    el.textContent = `${ccy} ›`;
+  }
+
+  function showCurrencyPicker() {
+    const current = (window.getDisplayCurrency?.() || 'usd');
+    modal(`
+      <h2>Display Currency</h2>
+      <p>All fiat values throughout the wallet (balances, prices, totals) are shown in this currency.</p>
+      <div id="ccy-list" style="max-height:50vh;overflow-y:auto;margin:0 -8px"></div>
+      <div class="modal-actions" style="grid-template-columns:1fr;margin-top:14px">
+        <button class="btn btn-outline" id="ccy-close">Close</button>
+      </div>
+    `, (root, close) => {
+      const list = root.querySelector('#ccy-list');
+      list.innerHTML = CURRENCY_OPTIONS.map(o => `
+        <button class="settings-menu-item ccy-row" data-code="${o.code}" style="background:transparent">
+          <span class="menu-label">${o.label} <span style="color:var(--text3);font-size:12px;margin-left:4px">${o.code.toUpperCase()}</span></span>
+          ${o.code === current ? '<span style="color:var(--accent);font-size:18px">✓</span>' : '<span></span>'}
+        </button>
+      `).join('');
+      list.querySelectorAll('.ccy-row').forEach(btn => {
+        btn.onclick = () => {
+          window.setDisplayCurrency?.(btn.dataset.code);
+          refreshCurrencyLabel();
+          close();
+          toast(`Display currency set to ${btn.dataset.code.toUpperCase()}`);
+        };
+      });
+      root.querySelector('#ccy-close').onclick = close;
+    });
+  }
+
   function wire() {
     $('menu-show-seed')?.addEventListener('click', showSeed);
     $('menu-change-pwd')?.addEventListener('click', changePassword);
     $('menu-manage-assets')?.addEventListener('click', showManageAssets);
+    $('menu-currency')?.addEventListener('click', showCurrencyPicker);
     $('menu-check-update')?.addEventListener('click', checkForUpdates);
     $('menu-lock-wallet')?.addEventListener('click', () => $('lock-btn')?.click());
     $('menu-biometric')?.addEventListener('click', () => {
       if (window.biometricEnabled?.()) disableBiometric();
       else enableBiometric();
     });
+    refreshCurrencyLabel();
     renderSettingsTab();
   }
 
