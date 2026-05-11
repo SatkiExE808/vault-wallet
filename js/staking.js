@@ -138,8 +138,18 @@ const Staking = (() => {
       if (action === 'stake') {
         const bal = parseFloat(state.balances['SOL']);
         if (!Number.isFinite(bal) || bal <= 0) { toast('No liquid SOL'); return; }
-        const max = bal - 0.001;
-        if (max <= 0) { toast('Need ~0.001 SOL extra to cover swap fee'); return; }
+        // Buffer covers (worst case, first-time swap):
+        //   ~0.00204 SOL — rent reserve for the JupSOL token account
+        //   ~0.00001 SOL — base tx fees + signatures
+        //   ~0.00295 SOL — slippage + Jupiter compute units + safety margin
+        // Total ≈ 0.005 SOL. Smaller buffers triggered SPL Token "0x1
+        // InsufficientFunds" on-chain because the leftover wasn't enough
+        // to pay rent for the new JupSOL token account.
+        const max = bal - 0.005;
+        if (max <= 0) {
+          toast('Need ~0.005 SOL extra to cover fees + JupSOL account rent');
+          return;
+        }
         root.querySelector('#stk-jup-amount').value = max.toFixed(6);
       } else {
         if (jupSolBal <= 0) { toast('No JupSOL to unstake'); return; }
