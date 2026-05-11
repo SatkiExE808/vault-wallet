@@ -97,7 +97,10 @@ const Staking = (() => {
       </div>
       <div class="form-group">
         <label id="stk-jup-amount-label">Amount (SOL)</label>
-        <input id="stk-jup-amount" type="number" step="any" min="0" placeholder="0.0">
+        <div style="display:flex;gap:8px">
+          <input id="stk-jup-amount" type="number" step="any" min="0" placeholder="0.0" style="flex:1">
+          <button type="button" class="btn btn-outline" id="stk-jup-max" style="padding:0 16px;flex-shrink:0">Max</button>
+        </div>
       </div>
       <div id="stk-jup-err" style="color:var(--red);font-size:13px;min-height:18px;margin-bottom:8px"></div>
       <div class="modal-actions">
@@ -108,10 +111,12 @@ const Staking = (() => {
     root.querySelector('#stk-jup-back').onclick = () => { close(); openSolModal(); };
 
     const infoDiv = root.querySelector('#stk-jup-info');
+    // Track JupSOL balance so the Max button can fill it in when unstaking.
+    let jupSolBal = 0;
     Promise.all([SolanaWallet.getJupSolBalance(addr), SolanaWallet.getJupSolRate()])
       .then(([bal, rate]) => {
-        const balNum = Number(bal);
-        const sol = rate ? (balNum * rate).toFixed(6) : null;
+        jupSolBal = Number(bal) || 0;
+        const sol = rate ? (jupSolBal * rate).toFixed(6) : null;
         infoDiv.innerHTML = `
           <div>JupSOL balance: <b>${bal}</b>${sol ? ` (≈ ${sol} SOL)` : ''}</div>
           ${rate ? `<div>Rate: 1 JupSOL ≈ ${rate.toFixed(6)} SOL</div>` : ''}
@@ -122,6 +127,20 @@ const Staking = (() => {
     const actionSeg = wireSeg(root, 'stk-jup-action', v => {
       amountLabel.textContent = v === 'stake' ? 'Amount (SOL)' : 'Amount (JupSOL)';
     });
+
+    // Max fills in liquid SOL (minus fee buffer) when staking, or the full
+    // JupSOL balance when unstaking — picked by the current action toggle.
+    root.querySelector('#stk-jup-max').onclick = () => {
+      const action = actionSeg.getValue();
+      if (action === 'stake') {
+        const bal = parseFloat(state.balances['SOL']);
+        if (!Number.isFinite(bal) || bal <= 0) return;
+        root.querySelector('#stk-jup-amount').value = Math.max(0, bal - 0.01).toFixed(6);
+      } else {
+        if (jupSolBal <= 0) return;
+        root.querySelector('#stk-jup-amount').value = jupSolBal.toFixed(6);
+      }
+    };
 
     const errDiv = root.querySelector('#stk-jup-err');
     root.querySelector('#stk-jup-do').onclick = async () => {
@@ -186,7 +205,10 @@ const Staking = (() => {
       </div>
       <div class="form-group">
         <label>Amount (SOL)</label>
-        <input id="stk-amount" type="number" step="any" min="0" placeholder="0.0">
+        <div style="display:flex;gap:8px">
+          <input id="stk-amount" type="number" step="any" min="0" placeholder="0.0" style="flex:1">
+          <button type="button" class="btn btn-outline" id="stk-max" style="padding:0 16px;flex-shrink:0">Max</button>
+        </div>
       </div>
       <div id="stk-err" style="color:var(--red);font-size:13px;min-height:18px;margin-bottom:8px"></div>
       <div class="modal-actions">
@@ -195,6 +217,16 @@ const Staking = (() => {
       </div>
     `);
     root.querySelector('#stk-close').onclick = () => { close(); openSolModal(); };
+
+    // Max button — fill in the liquid balance minus a small buffer for the
+    // stake-account rent reserve (~0.00228 SOL) plus tx fees. Without this
+    // buffer "Max" reliably fails with "insufficient funds for rent".
+    root.querySelector('#stk-max').onclick = () => {
+      const bal = parseFloat(state.balances['SOL']);
+      if (!Number.isFinite(bal) || bal <= 0) return;
+      const max = Math.max(0, bal - 0.01);
+      root.querySelector('#stk-amount').value = max.toFixed(6);
+    };
 
     const listDiv = root.querySelector('#stake-list');
     SolanaWallet.getStakeAccounts(addr).then(accs => {
@@ -313,7 +345,10 @@ const Staking = (() => {
       </div>
       <div class="form-group" id="stk-amount-group">
         <label>Amount (TRX)</label>
-        <input id="stk-amount" type="number" step="any" min="0" placeholder="0.0">
+        <div style="display:flex;gap:8px">
+          <input id="stk-amount" type="number" step="any" min="0" placeholder="0.0" style="flex:1">
+          <button type="button" class="btn btn-outline" id="stk-trx-max" style="padding:0 16px;flex-shrink:0">Max</button>
+        </div>
       </div>
       <div class="form-group" id="stk-vote-group" style="display:none">
         <label>Super Representative address</label>
@@ -338,12 +373,16 @@ const Staking = (() => {
     const infoDiv = root.querySelector('#stk-info');
     const claimInfo = root.querySelector('#stk-claim-info');
     let voting = { tronPower: 0, tronPowerAvailable: 0, currentVotes: [], claimableRewards: 0 };
+    // Track frozen amounts per resource so the Max button can fill in the
+    // right cap when the action is "unfreeze".
+    let frozen = { ENERGY: 0, BANDWIDTH: 0 };
 
     Promise.all([
       TronWallet.getStakeInfo(addr),
       TronWallet.getVotingInfo(addr),
     ]).then(([stake, vote]) => {
       voting = vote;
+      frozen = { ENERGY: stake.energy, BANDWIDTH: stake.bandwidth };
       const now = Date.now();
       const claimable = stake.pending.filter(p => p.expireMs <= now).reduce((s, p) => s + p.amount, 0);
       const waiting   = stake.pending.filter(p => p.expireMs >  now);
@@ -385,6 +424,23 @@ const Staking = (() => {
     const actionSeg = wireSeg(root, 'stk-action', updateActionView);
     const resourceSeg = wireSeg(root, 'stk-resource');
     updateActionView(actionSeg.getValue());
+
+    // Max button — caps depend on action:
+    //  - freeze  → liquid TRX minus a 1 TRX buffer for the freeze tx fee
+    //  - unfreeze → currently frozen for the selected resource
+    root.querySelector('#stk-trx-max').onclick = () => {
+      const action = actionSeg.getValue();
+      const input = root.querySelector('#stk-amount');
+      if (action === 'freeze') {
+        const bal = parseFloat(state.balances['TRX']);
+        if (!Number.isFinite(bal) || bal <= 0) return;
+        input.value = Math.max(0, bal - 1).toFixed(6);
+      } else if (action === 'unfreeze') {
+        const cap = frozen[resourceSeg.getValue()] || 0;
+        if (cap <= 0) return;
+        input.value = cap.toFixed(6);
+      }
+    };
 
     const errDiv = root.querySelector('#stk-err');
     root.querySelector('#stk-do').onclick = async () => {
