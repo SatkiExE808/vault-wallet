@@ -567,6 +567,14 @@ const Staking = (() => {
             ? await TronWallet.freezeTRX(state.mnemonic, amt, resource)
             : await TronWallet.unfreezeTRX(state.mnemonic, amt, resource);
           toast(`Done! TX: ${String(txid).slice(0, 20)}…`);
+          if (typeof Inbox !== 'undefined') Inbox.add({
+            type: 'stake',
+            title: action === 'freeze' ? 'TRX staked (frozen)' : 'TRX unstaked',
+            network: 'Tron',
+            subtitle: action === 'freeze'
+              ? `${amt} TRX frozen for ${resource} · TRON Power gained`
+              : `${amt} TRX unfreezing · 14 day cooldown`,
+          });
           close(); setTimeout(refreshBalances, 4000);
         } catch (e) { errDiv.textContent = e.message || 'Transaction failed'; btn.disabled = false; btn.textContent = 'Confirm'; }
         return;
@@ -586,6 +594,12 @@ const Staking = (() => {
         try {
           const txid = await TronWallet.withdrawUnfrozenTRX(state.mnemonic);
           toast(`Done! TX: ${String(txid).slice(0, 20)}…`);
+          if (typeof Inbox !== 'undefined') Inbox.add({
+            type: 'stake',
+            title: 'TRX withdrawn from stake',
+            network: 'Tron',
+            subtitle: 'Expired unfrozen TRX returned to liquid balance',
+          });
           close(); setTimeout(refreshBalances, 4000);
         } catch (e) { errDiv.textContent = e.message || 'Transaction failed'; btn.disabled = false; btn.textContent = 'Confirm'; }
         return;
@@ -612,6 +626,12 @@ const Staking = (() => {
         try {
           const txid = await TronWallet.voteForSR(state.mnemonic, srAddr, count);
           toast(`Voted! TX: ${String(txid).slice(0, 20)}…`);
+          if (typeof Inbox !== 'undefined') Inbox.add({
+            type: 'stake',
+            title: 'TRX vote cast',
+            network: 'Tron',
+            subtitle: `${count} TP → ${srAddr.slice(0,6)}…${srAddr.slice(-4)}`,
+          });
           close(); setTimeout(refreshBalances, 4000);
         } catch (e) { errDiv.textContent = e.message || 'Vote failed'; btn.disabled = false; btn.textContent = 'Confirm'; }
         return;
@@ -632,6 +652,12 @@ const Staking = (() => {
         try {
           const txid = await TronWallet.claimRewards(state.mnemonic);
           toast(`Claimed! TX: ${String(txid).slice(0, 20)}…`);
+          if (typeof Inbox !== 'undefined') Inbox.add({
+            type: 'stake',
+            title: 'TRX rewards claimed',
+            network: 'Tron',
+            subtitle: `${voting.claimableRewards.toFixed(6)} TRX returned to liquid balance`,
+          });
           close(); setTimeout(refreshBalances, 4000);
         } catch (e) { errDiv.textContent = e.message || 'Claim failed'; btn.disabled = false; btn.textContent = 'Confirm'; }
         return;
