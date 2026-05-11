@@ -229,13 +229,38 @@ const Staking = (() => {
     };
 
     const listDiv = root.querySelector('#stake-list');
-    SolanaWallet.getStakeAccounts(addr).then(accs => {
+    SolanaWallet.getStakeAccounts(addr).then(async accs => {
       if (!accs.length) { listDiv.textContent = 'No stake accounts yet.'; return; }
+      // Batch-fetch the previous epoch's reward for each account (0 if it
+      // hadn't activated yet, or if the RPC rejects the call).
+      const rewardLamports = await SolanaWallet.getLastEpochRewards(accs.map(a => a.pubkey));
+      const APR = 0.065;       // ballpark Solana staking APR — used for projections
+      const LAMPORTS = 1e9;
+      const EPOCH_DAYS = 2.5;  // ~2-3 days per epoch on mainnet
       listDiv.innerHTML = '<div style="margin-bottom:6px;color:var(--text);font-weight:600">Your stake accounts</div>' +
-        accs.map(a => {
+        accs.map((a, i) => {
           const stateColor = a.state === 'active' ? 'var(--green)'
                           : a.state === 'inactive' ? 'var(--text3)'
                           : 'var(--accent2)';
+          // Projected earnings — pure math from APR, no RPC needed.
+          const solAmount  = parseFloat(a.sol);
+          const dailyProj  = Number.isFinite(solAmount) ? (solAmount * APR / 365) : 0;
+          const yearlyProj = Number.isFinite(solAmount) ? (solAmount * APR) : 0;
+          // Real last-epoch reward (if RPC returned one). Convert to per-day rate.
+          const lastReward = rewardLamports[i] || 0;
+          const lastRewardSol = lastReward / LAMPORTS;
+          const lastDaily     = lastRewardSol / EPOCH_DAYS;
+          // Only show real rewards if the account is active and has a non-zero entry.
+          const rewardsHtml = (a.state === 'active' && lastReward > 0)
+            ? `<div style="margin-top:4px;font-size:12px;color:var(--green)">
+                 +${lastRewardSol.toFixed(6)} SOL last epoch (~${lastDaily.toFixed(6)}/day)
+               </div>`
+            : '';
+          const projHtml = (a.state === 'active' || a.state === 'activating')
+            ? `<div style="margin-top:2px;font-size:11px;color:var(--text3)">
+                 Projected: ~${dailyProj.toFixed(6)} SOL/day · ~${yearlyProj.toFixed(4)}/year at ${(APR*100).toFixed(1)}% APR
+               </div>`
+            : '';
           return `
             <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:6px">
               <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
@@ -252,6 +277,8 @@ const Staking = (() => {
                     : ''}
                 </span>
               </div>
+              ${rewardsHtml}
+              ${projHtml}
             </div>`;
         }).join('');
       listDiv.querySelectorAll('button[data-act]').forEach(btn => {
