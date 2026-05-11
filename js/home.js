@@ -192,6 +192,65 @@
   // Wallet view: which coin is currently displayed at top
   let walletDisplayCoin = null;
 
+  // Stake-summary state cache — keyed by SOL address. Avoids re-hammering
+  // RPCs every time the user swaps to the SOL wallet view. 60 s TTL.
+  const _stakeSummaryCache = {};
+  async function renderSolStakeSummary(coin, liquidBal) {
+    const el = $('wd-stake-summary');
+    if (!el) return;
+    if (coin.id !== 'SOL') { el.style.display = 'none'; return; }
+    const addr = state.addresses?.SOL;
+    if (!addr) { el.style.display = 'none'; return; }
+
+    // Render from cache immediately if fresh, then refresh in background.
+    const cached = _stakeSummaryCache[addr];
+    if (cached && Date.now() - cached.ts < 60000) {
+      paintStakeSummary(el, liquidBal, cached.data);
+    } else {
+      el.style.display = '';
+      el.innerHTML = '<span style="color:var(--text3)">Loading staked totals…</span>';
+    }
+
+    try {
+      const [accounts, jupBal, jupRate] = await Promise.all([
+        SolanaWallet.getStakeAccounts(addr),
+        SolanaWallet.getJupSolBalance(addr),
+        SolanaWallet.getJupSolRate(),
+      ]);
+      // Sum lamports across stake accounts that still hold value (anything
+      // not fully withdrawn). Inactive accounts still have lamports until
+      // the user withdraws them.
+      const nativeStakeSol = (accounts || []).reduce((sum, a) => sum + (Number(a.sol) || 0), 0);
+      const jupSolNum = parseFloat(jupBal) || 0;
+      const jupValueSol = jupRate ? (jupSolNum * jupRate) : 0;
+      const data = { nativeStakeSol, jupValueSol, jupSolNum };
+      _stakeSummaryCache[addr] = { ts: Date.now(), data };
+      paintStakeSummary(el, liquidBal, data);
+    } catch {
+      // Network blip — leave the cached row (or hide if no cache yet).
+      if (!cached) el.style.display = 'none';
+    }
+  }
+
+  function paintStakeSummary(el, liquidBal, d) {
+    const liquid = parseFloat(liquidBal) || 0;
+    const total  = liquid + (d.nativeStakeSol || 0) + (d.jupValueSol || 0);
+    // Don't show anything if the user has no staked SOL anywhere. The
+    // liquid balance is already shown above.
+    if (d.nativeStakeSol < 1e-9 && d.jupValueSol < 1e-9) {
+      el.style.display = 'none';
+      return;
+    }
+    const parts = [];
+    if (d.nativeStakeSol > 0) parts.push(`<b>${d.nativeStakeSol.toFixed(6)}</b> native`);
+    if (d.jupValueSol > 0)    parts.push(`<b>${d.jupValueSol.toFixed(6)}</b> liquid`);
+    el.style.display = '';
+    el.innerHTML = `
+      <div>Staked: ${parts.join(' + ')} = <b style="color:var(--text2)">${(d.nativeStakeSol + d.jupValueSol).toFixed(6)} SOL</b></div>
+      <div style="margin-top:2px">Total position: <b style="color:var(--text2)">${total.toFixed(6)} SOL</b> <span style="color:var(--text3)">· liquid ${liquid.toFixed(6)} is sendable</span></div>
+    `;
+  }
+
   function renderWalletDisplay(coinId) {
     const active = (typeof getActiveCoins === 'function') ? getActiveCoins() : [];
     if (!active.length) return;
@@ -214,6 +273,10 @@
     $('wd-amount').textContent = `${bal} ${coin.symbol}`;
     $('wd-usd').textContent = usd;
     $('wd-address').textContent = addr;
+    // For SOL, fetch native-stake + JupSOL totals and show them under the
+    // balance so the user sees where ALL their SOL is (staked positions
+    // aren't part of the liquid balance and can't be sent without unstaking).
+    renderSolStakeSummary(coin, bal);
 
     // Render QR
     const qrSlot = $('wd-qr');
@@ -329,20 +392,36 @@
     $('wd-paste-addr').onclick = () => window.pasteAddress?.($('wd-send-to'));
     $('wd-scan-addr').onclick  = () => window.scanAddress?.($('wd-send-to'));
 
-    // Max button
+    // Max button — fill in the largest amount that still leaves room for
+    // the network fee. The fee model varies by coin:
+    //   EVM native: use the live fee row × buffer (rollup-aware)
+    //   SOL: reserve ~0.001 SOL for the tx fee (real fee is ~5,000 lamports
+    //        but a fatter buffer prevents "insufficient funds for fee"
+    //        when the rate shifts mid-tx)
+    //   TRX: reserve 1 TRX for activation fees / energy edge cases
+    //   Others (UTXO, tokens): fee is paid out of the same balance and
+    //     handled by the send logic, so Max can use the full balance.
     $('wd-send-max').onclick = () => {
       const bal = parseFloat(state.balances[coin.id] || '0');
-      if (bal <= 0) return;
+      if (bal <= 0) { toast(`No liquid ${coin.symbol}`); return; }
       const feeRow = $('wd-send-fee-row');
       const isEvm = !!EVM_GAS[coin.id];
+      let max;
       if (isEvm && !EVM_GAS[coin.id].token && feeRow.dataset.fee) {
         const isRollup = feeRow.dataset.rollup === '1';
         const buffer = isRollup ? 1.5 : 1.2;
         const fee = parseFloat(feeRow.dataset.fee) * buffer;
-        $('wd-send-amount').value = Math.max(0, bal - fee).toFixed(6);
+        max = bal - fee;
+      } else if (coin.id === 'SOL') {
+        max = bal - 0.001;
+        if (max <= 0) { toast('Need ~0.001 SOL extra to cover the network fee'); return; }
+      } else if (coin.id === 'TRX') {
+        max = bal - 1;
+        if (max <= 0) { toast('Need ~1 TRX extra to cover the network fee'); return; }
       } else {
-        $('wd-send-amount').value = bal.toString();
+        max = bal;
       }
+      $('wd-send-amount').value = Math.max(0, max).toFixed(6);
     };
 
     // Inline send — reuses the same coin.send + verifyAuth path as the coin detail
