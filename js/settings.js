@@ -445,6 +445,20 @@
     refreshCurrencyLabel();
     refresh2FALabel();
     refreshPassphraseLabel();
+    refreshSwVersion();
+  }
+
+  // Read the active SW cache key (e.g. "vault-v114") so the user can
+  // verify which build their device is actually running. Handy when
+  // diagnosing "the fix isn't working" reports.
+  async function refreshSwVersion() {
+    const el = $('settings-sw-version');
+    if (!el || typeof caches === 'undefined') return;
+    try {
+      const keys = await caches.keys();
+      const v = keys.find(k => k.startsWith('vault-')) || '?';
+      el.textContent = `Build ${v}`;
+    } catch {}
   }
   window.renderSettingsTab = renderSettingsTab;
 

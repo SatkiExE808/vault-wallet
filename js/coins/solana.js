@@ -194,16 +194,32 @@ const SolanaWallet = (() => {
             type = delta < 0 ? 'send' : 'receive';
             amount = Math.abs(delta).toFixed(6);
           }
-          // Detect which programs the tx invoked by scanning the log
-          // messages. Every Solana program invocation emits a line like
-          //   "Program <ID> invoke [N]"
-          // which is far more reliable than parsing instruction
-          // programIdIndex — it covers static keys, ALT-loaded
-          // addresses, AND CPIs at any depth, without us needing to
-          // decode any account index logic.
+          // Belt-and-suspenders program detection. Combine three
+          // independent signals and OR them together — whichever finds
+          // a hit wins:
+          //   1. Log messages "Program <id> invoke [N]" — present
+          //      whenever the RPC returns logs; covers CPIs at any depth.
+          //   2. Top-level instructions, resolved through static
+          //      accountKeys AND meta.loadedAddresses for V0 / ALT txs.
+          //   3. Inner instructions (meta.innerInstructions) for CPIs
+          //      whose outer program is something else.
+          // Some public RPCs strip logMessages from old transactions
+          // and some strip innerInstructions, so we don't rely on any
+          // single source.
           const logs = (d.meta.logMessages || []).join('\n');
-          const hitStake = logs.includes(PROG_STAKE);
-          const hitJup   = logs.includes(PROG_JUP_V6) || logs.includes(PROG_JUP_V4);
+          const loadedW = (d.meta.loadedAddresses?.writable || []).map(k => typeof k === 'string' ? k : k?.pubkey);
+          const loadedR = (d.meta.loadedAddresses?.readonly || []).map(k => typeof k === 'string' ? k : k?.pubkey);
+          const allKeys = [...keys, ...loadedW, ...loadedR];
+          const topIxs   = d.transaction.message.instructions || [];
+          const innerIxs = (d.meta.innerInstructions || []).flatMap(g => g.instructions || []);
+          const programIds = [...topIxs, ...innerIxs].map(ix => {
+            if (typeof ix.programId === 'string') return ix.programId;
+            if (typeof ix.programIdIndex === 'number') return allKeys[ix.programIdIndex];
+            return null;
+          }).filter(Boolean);
+          const hitStake = logs.includes(PROG_STAKE) || programIds.includes(PROG_STAKE);
+          const hitJup   = logs.includes(PROG_JUP_V6) || logs.includes(PROG_JUP_V4)
+                        || programIds.includes(PROG_JUP_V6) || programIds.includes(PROG_JUP_V4);
           // Classify. We can't reliably parse stake-instruction discriminators
           // here so we use the signed delta as a proxy:
           //   stake → big negative (lamports go into the new stake account)
