@@ -178,15 +178,31 @@ const SolanaWallet = (() => {
         const d = details[i].status === 'fulfilled' ? details[i].value : null;
         let type = 'send', amount = '—', kind = 'send', delta = 0;
         if (d && d.meta && d.transaction) {
-          const keys = (d.transaction.message.accountKeys || []).map(k => typeof k === 'string' ? k : k?.pubkey);
+          // For V0 transactions with Address Lookup Tables (Jupiter
+          // swaps, modern Solana txs), the resolved program/account
+          // pubkeys live in meta.loadedAddresses, appended after the
+          // static accountKeys. Without merging these in, an instruction
+          // whose programIdIndex points past the static slice resolves
+          // to undefined and classification falls back to plain Sent.
+          const staticKeys = (d.transaction.message.accountKeys || []).map(k => typeof k === 'string' ? k : k?.pubkey);
+          const loadedW = (d.meta.loadedAddresses?.writable || []).map(k => typeof k === 'string' ? k : k?.pubkey);
+          const loadedR = (d.meta.loadedAddresses?.readonly || []).map(k => typeof k === 'string' ? k : k?.pubkey);
+          const keys = [...staticKeys, ...loadedW, ...loadedR];
           const idx = keys.findIndex(k => k === address);
           if (idx >= 0) {
             delta = (d.meta.postBalances[idx] - d.meta.preBalances[idx]) / solanaWeb3.LAMPORTS_PER_SOL;
             type = delta < 0 ? 'send' : 'receive';
             amount = Math.abs(delta).toFixed(6);
           }
-          // Detect which programs the tx touched.
-          const programIds = (d.transaction.message.instructions || []).map(ix => {
+          // Detect which programs the tx touched. Includes BOTH the
+          // top-level instructions and the meta.innerInstructions
+          // expansion, so swaps that route through a CPI to Jupiter
+          // (or stake CPIs) get classified correctly even when the
+          // outer program is something else (token program, etc.).
+          const topIxs   = d.transaction.message.instructions || [];
+          const innerIxs = (d.meta.innerInstructions || []).flatMap(g => g.instructions || []);
+          const allIxs   = [...topIxs, ...innerIxs];
+          const programIds = allIxs.map(ix => {
             if (typeof ix.programId === 'string') return ix.programId;
             if (typeof ix.programIdIndex === 'number') return keys[ix.programIdIndex];
             return null;
