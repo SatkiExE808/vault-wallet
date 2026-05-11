@@ -199,22 +199,20 @@ const SolanaWallet = (() => {
           // a hit wins:
           //   1. Log messages "Program <id> invoke [N]" — present
           //      whenever the RPC returns logs; covers CPIs at any depth.
-          //   2. Top-level instructions, resolved through static
-          //      accountKeys AND meta.loadedAddresses for V0 / ALT txs.
+          //   2. Top-level instructions, resolved through `keys` (which
+          //      already merges static accountKeys + loadedAddresses for
+          //      V0 / ALT txs above).
           //   3. Inner instructions (meta.innerInstructions) for CPIs
           //      whose outer program is something else.
           // Some public RPCs strip logMessages from old transactions
           // and some strip innerInstructions, so we don't rely on any
           // single source.
           const logs = (d.meta.logMessages || []).join('\n');
-          const loadedW = (d.meta.loadedAddresses?.writable || []).map(k => typeof k === 'string' ? k : k?.pubkey);
-          const loadedR = (d.meta.loadedAddresses?.readonly || []).map(k => typeof k === 'string' ? k : k?.pubkey);
-          const allKeys = [...keys, ...loadedW, ...loadedR];
           const topIxs   = d.transaction.message.instructions || [];
           const innerIxs = (d.meta.innerInstructions || []).flatMap(g => g.instructions || []);
           const programIds = [...topIxs, ...innerIxs].map(ix => {
             if (typeof ix.programId === 'string') return ix.programId;
-            if (typeof ix.programIdIndex === 'number') return allKeys[ix.programIdIndex];
+            if (typeof ix.programIdIndex === 'number') return keys[ix.programIdIndex];
             return null;
           }).filter(Boolean);
           const hitStake = logs.includes(PROG_STAKE) || programIds.includes(PROG_STAKE);
