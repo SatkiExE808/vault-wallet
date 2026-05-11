@@ -240,6 +240,20 @@ const SolanaWallet = (() => {
     }
   }
 
+  // Batched last-epoch reward lookup for stake accounts. Unlike
+  // getProgramAccounts, this method (getInflationReward) is supported by
+  // most public RPCs. Returns parallel-indexed lamports — 0 when the
+  // call fails or the account didn't earn anything yet.
+  async function getLastEpochRewards(stakeAccountAddresses) {
+    if (!stakeAccountAddresses || !stakeAccountAddresses.length) return [];
+    try {
+      const res = await rpcCall('getInflationReward', [stakeAccountAddresses]);
+      return (res || []).map(r => (r && r.amount != null) ? Number(r.amount) : 0);
+    } catch {
+      return new Array(stakeAccountAddresses.length).fill(0);
+    }
+  }
+
   async function stakeSOL(mnemonic, validatorVoteAddress, amount) {
     await assertIsVoteAccount(validatorVoteAddress);
     const kp = await deriveKeypair(mnemonic);
@@ -380,5 +394,6 @@ const SolanaWallet = (() => {
 
   return { deriveAddress, getBalance, sendSOL, getHistory,
            getStakeAccounts, stakeSOL, deactivateStake, withdrawStake,
+           getLastEpochRewards,
            getJupSolBalance, getJupSolRate, liquidStakeJupSol, liquidUnstakeJupSol };
 })();
