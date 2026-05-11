@@ -192,65 +192,6 @@
   // Wallet view: which coin is currently displayed at top
   let walletDisplayCoin = null;
 
-  // Stake-summary state cache — keyed by SOL address. Avoids re-hammering
-  // RPCs every time the user swaps to the SOL wallet view. 60 s TTL.
-  const _stakeSummaryCache = {};
-  async function renderSolStakeSummary(coin, liquidBal) {
-    const el = $('wd-stake-summary');
-    if (!el) return;
-    if (coin.id !== 'SOL') { el.style.display = 'none'; return; }
-    const addr = state.addresses?.SOL;
-    if (!addr) { el.style.display = 'none'; return; }
-
-    // Render from cache immediately if fresh, then refresh in background.
-    const cached = _stakeSummaryCache[addr];
-    if (cached && Date.now() - cached.ts < 60000) {
-      paintStakeSummary(el, liquidBal, cached.data);
-    } else {
-      el.style.display = '';
-      el.innerHTML = '<span style="color:var(--text3)">Loading staked totals…</span>';
-    }
-
-    try {
-      const [accounts, jupBal, jupRate] = await Promise.all([
-        SolanaWallet.getStakeAccounts(addr),
-        SolanaWallet.getJupSolBalance(addr),
-        SolanaWallet.getJupSolRate(),
-      ]);
-      // Sum lamports across stake accounts that still hold value (anything
-      // not fully withdrawn). Inactive accounts still have lamports until
-      // the user withdraws them.
-      const nativeStakeSol = (accounts || []).reduce((sum, a) => sum + (Number(a.sol) || 0), 0);
-      const jupSolNum = parseFloat(jupBal) || 0;
-      const jupValueSol = jupRate ? (jupSolNum * jupRate) : 0;
-      const data = { nativeStakeSol, jupValueSol, jupSolNum };
-      _stakeSummaryCache[addr] = { ts: Date.now(), data };
-      paintStakeSummary(el, liquidBal, data);
-    } catch {
-      // Network blip — leave the cached row (or hide if no cache yet).
-      if (!cached) el.style.display = 'none';
-    }
-  }
-
-  function paintStakeSummary(el, liquidBal, d) {
-    const liquid = parseFloat(liquidBal) || 0;
-    const total  = liquid + (d.nativeStakeSol || 0) + (d.jupValueSol || 0);
-    // Don't show anything if the user has no staked SOL anywhere. The
-    // liquid balance is already shown above.
-    if (d.nativeStakeSol < 1e-9 && d.jupValueSol < 1e-9) {
-      el.style.display = 'none';
-      return;
-    }
-    const parts = [];
-    if (d.nativeStakeSol > 0) parts.push(`<b>${d.nativeStakeSol.toFixed(6)}</b> native`);
-    if (d.jupValueSol > 0)    parts.push(`<b>${d.jupValueSol.toFixed(6)}</b> liquid`);
-    el.style.display = '';
-    el.innerHTML = `
-      <div>Staked: ${parts.join(' + ')} = <b style="color:var(--text2)">${(d.nativeStakeSol + d.jupValueSol).toFixed(6)} SOL</b></div>
-      <div style="margin-top:2px">Total position: <b style="color:var(--text2)">${total.toFixed(6)} SOL</b> <span style="color:var(--text3)">· liquid ${liquid.toFixed(6)} is sendable</span></div>
-    `;
-  }
-
   function renderWalletDisplay(coinId) {
     const active = (typeof getActiveCoins === 'function') ? getActiveCoins() : [];
     if (!active.length) return;
@@ -273,10 +214,6 @@
     $('wd-amount').textContent = `${bal} ${coin.symbol}`;
     $('wd-usd').textContent = usd;
     $('wd-address').textContent = addr;
-    // For SOL, fetch native-stake + JupSOL totals and show them under the
-    // balance so the user sees where ALL their SOL is (staked positions
-    // aren't part of the liquid balance and can't be sent without unstaking).
-    renderSolStakeSummary(coin, bal);
 
     // Render QR
     const qrSlot = $('wd-qr');
