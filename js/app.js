@@ -1166,8 +1166,20 @@ async function refreshBalances() {
     } else if (newBal < last) {
       // Decrease (user sent some out, or first-after-recovery dip).
       // Lower the baseline silently so the next deposit fires correctly.
-      baseline[coin.id] = newBal;
-      baselineChanged = true;
+      //
+      // BUT: skip when the new reading is suspiciously close to zero while
+      // the prior baseline was meaningfully positive. That pattern is
+      // almost always a transient RPC failure where the coin module's
+      // catch returned '0.000000' as a placeholder. If we lowered baseline
+      // to 0 here, the next successful refresh would compute
+      // delta = realBalance - 0 and fire a fake "+X deposit" notification.
+      // That was the source of the SOL deposit-spam loop.
+      if (newBal < 1e-9 && last > 1e-6) {
+        // Treat as API failure — baseline stays put.
+      } else {
+        baseline[coin.id] = newBal;
+        baselineChanged = true;
+      }
     }
   }
   if (baselineChanged) {
