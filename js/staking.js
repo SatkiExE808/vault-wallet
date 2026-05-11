@@ -231,9 +231,12 @@ const Staking = (() => {
     const listDiv = root.querySelector('#stake-list');
     SolanaWallet.getStakeAccounts(addr).then(async accs => {
       if (!accs.length) { listDiv.textContent = 'No stake accounts yet.'; return; }
-      // Batch-fetch the previous epoch's reward for each account (0 if it
-      // hadn't activated yet, or if the RPC rejects the call).
-      const rewardLamports = await SolanaWallet.getLastEpochRewards(accs.map(a => a.pubkey));
+      // Fetch in parallel: previous-epoch reward (one batched call) and the
+      // validator metadata for each delegation (Stakewiz, cached 24h).
+      const [rewardLamports, validatorInfos] = await Promise.all([
+        SolanaWallet.getLastEpochRewards(accs.map(a => a.pubkey)),
+        Promise.all(accs.map(a => SolanaWallet.getValidatorInfo(a.validator))),
+      ]);
       const APR = 0.065;       // ballpark Solana staking APR — used for projections
       const LAMPORTS = 1e9;
       const EPOCH_DAYS = 2.5;  // ~2-3 days per epoch on mainnet
@@ -261,8 +264,21 @@ const Staking = (() => {
                  Projected: ~${dailyProj.toFixed(6)} SOL/day · ~${yearlyProj.toFixed(4)}/year at ${(APR*100).toFixed(1)}% APR
                </div>`
             : '';
+          // Validator header: logo + name when available, else just the vote
+          // address tail so the user can still identify the project.
+          const v = validatorInfos[i];
+          const voteTail = a.validator ? `${a.validator.slice(0,6)}…${a.validator.slice(-4)}` : '';
+          const validatorHtml = v && (v.name || v.image)
+            ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                 ${v.image ? `<img src="${escapeHtml(v.image)}" alt="" style="width:22px;height:22px;border-radius:50%;background:var(--surface);object-fit:cover" onerror="this.style.display='none'">` : ''}
+                 <div style="font-weight:600;font-size:13px;color:var(--text)">${escapeHtml(v.name || voteTail)}</div>
+               </div>`
+            : (a.validator
+                ? `<div style="font-size:11px;color:var(--text3);margin-bottom:4px">Validator: ${voteTail}</div>`
+                : '');
           return `
             <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:6px">
+              ${validatorHtml}
               <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
                 <code style="color:var(--text2);word-break:break-all">${a.pubkey.slice(0,10)}…${a.pubkey.slice(-6)}</code>
                 <span style="color:${stateColor};font-weight:600;text-transform:uppercase;font-size:10px">${a.state}</span>
