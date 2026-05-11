@@ -520,7 +520,18 @@ const SolanaWallet = (() => {
     const tx = solanaWeb3.VersionedTransaction.deserialize(txBytes);
     tx.sign([kp]);
     const conn = await _conn();
-    return await conn.sendRawTransaction(tx.serialize());
+    try {
+      return await conn.sendRawTransaction(tx.serialize());
+    } catch (e) {
+      const msg = String(e?.message || e);
+      // SPL Token program throws 0x1 ("InsufficientFunds") when there isn't
+      // enough lamports left after the swap to cover the new ATA rent.
+      // Rewrite the cryptic Solana log into something actionable.
+      if (/0x1\b/.test(msg) || /InsufficientFunds/i.test(msg)) {
+        throw new Error('Not enough SOL left to cover fees + the new JupSOL account rent (~0.005 SOL needed on top of the stake amount). Lower the amount and try again.');
+      }
+      throw e;
+    }
   }
 
   async function liquidStakeJupSol(mnemonic, solAmount) {
