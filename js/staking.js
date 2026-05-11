@@ -470,6 +470,36 @@ const Staking = (() => {
                  Projected: ~${dailyProj.toFixed(6)} SOL/day · ~${yearlyProj.toFixed(4)}/year at ${(APR*100).toFixed(1)}% APR
                </div>`
             : '';
+          // Realtime profit = current lamports − initial lamports (rewards
+          // compound into the same account on Solana native staking, so the
+          // delta is the realized profit).
+          const basis = SolanaWallet.readStakeBasis(a.pubkey);
+          let profitHtml = '';
+          if (basis) {
+            const profitLamports = a.lamports - basis.initialLamports;
+            const profitSol = profitLamports / LAMPORTS;
+            const days = Math.max(1/24, (Date.now() - basis.stakedAt) / 86400000);
+            const dailyAvg = profitSol / days;
+            const positive = profitLamports >= 0;
+            const color = positive ? 'var(--green)' : 'var(--text3)';
+            const sign  = positive ? '+' : '−';
+            profitHtml = `
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);font-size:12px">
+                <span style="color:var(--text2)">Realtime profit</span>
+                <span style="color:${color};font-weight:700;font-variant-numeric:tabular-nums">
+                  ${sign}${Math.abs(profitSol).toFixed(6)} SOL${days >= 1 ? ` (~${Math.abs(dailyAvg).toFixed(6)}/day avg)` : ''}
+                </span>
+              </div>`;
+          } else if (a.state === 'active' || a.state === 'activating') {
+            // No basis on record — let the user opt in to tracking from now.
+            profitHtml = `
+              <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);text-align:center">
+                <button type="button" class="link-btn" data-seed-basis="${a.pubkey}" data-current-lamports="${a.lamports}"
+                        style="font-size:11px;color:var(--accent);background:transparent;border:none;padding:4px 0;cursor:pointer">
+                  Track realtime profit from here →
+                </button>
+              </div>`;
+          }
           // Validator header: logo + name when available, else just the vote
           // address tail so the user can still identify the project.
           const v = validatorInfos[i];
@@ -501,9 +531,27 @@ const Staking = (() => {
               </div>
               ${rewardsHtml}
               ${projHtml}
+              ${profitHtml}
             </div>`;
         }).join('') + recoverBtnHtml;
       wireRecover();
+      // "Track realtime profit from here →" — seeds the cost basis to the
+      // current on-chain lamports. Useful for stake accounts created before
+      // basis-tracking shipped or imported from another wallet.
+      listDiv.querySelectorAll('button[data-seed-basis]').forEach(btn => {
+        btn.onclick = () => {
+          const pk = btn.dataset.seedBasis;
+          const lamports = Number(btn.dataset.currentLamports);
+          if (!pk || !Number.isFinite(lamports) || lamports <= 0) return;
+          SolanaWallet.rememberStakeBasis(pk, lamports);
+          toast('Tracking profit from current balance');
+          // Reload by closing and re-opening the modal — keeps the code path
+          // identical to a fresh open instead of having to incrementally
+          // re-render one row.
+          close();
+          openSolNativeModal();
+        };
+      });
       listDiv.querySelectorAll('button[data-act]').forEach(btn => {
         btn.onclick = async () => {
           const action = btn.dataset.act, accPub = btn.dataset.acc;
