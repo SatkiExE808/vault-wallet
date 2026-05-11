@@ -112,7 +112,18 @@ const SolanaWallet = (() => {
     } catch { return '0.000000'; }
   }
 
+  // Quick preflight that catches "polyfill didn't load" cases — the user's
+  // device may still be running an older HTML build that doesn't include
+  // the buffer-polyfill.js <script> tag. Surfacing a clearer message
+  // beats letting solanaWeb3 throw "Buffer is not defined" at sign-time.
+  function _assertBufferPolyfill() {
+    if (typeof Buffer === 'undefined') {
+      throw new Error('Buffer polyfill not loaded — open Settings → Check for Updates, then close and reopen the app.');
+    }
+  }
+
   async function sendSOL(mnemonic, to, amount) {
+    _assertBufferPolyfill();
     const kp = await deriveKeypair(mnemonic);
     const conn = await _conn();
     const lamports = Math.floor(Number(amount) * solanaWeb3.LAMPORTS_PER_SOL);
@@ -360,6 +371,7 @@ const SolanaWallet = (() => {
   }
 
   async function stakeSOL(mnemonic, validatorVoteAddress, amount) {
+    _assertBufferPolyfill();
     await assertIsVoteAccount(validatorVoteAddress);
     const kp = await deriveKeypair(mnemonic);
     const conn = await _conn();
