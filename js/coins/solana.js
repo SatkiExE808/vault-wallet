@@ -428,7 +428,27 @@ const SolanaWallet = (() => {
   // exit the position instantly with no setup.
   const JUPSOL_MINT = 'jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v';
   const SOL_MINT    = 'So11111111111111111111111111111111111111112';
-  const JUP_API     = 'https://quote-api.jup.ag/v6';
+
+  // Jupiter migrated their public API in 2025. The legacy quote-api.jup.ag/v6
+  // host is being phased out and now returns network-level failures for
+  // unauthenticated browser callers ("Failed to fetch"). lite-api.jup.ag is
+  // the keyless replacement; api.jup.ag requires a paid key. Try lite first,
+  // fall back to the legacy host as a safety net.
+  const JUP_HOSTS = [
+    'https://lite-api.jup.ag/swap/v1',
+    'https://quote-api.jup.ag/v6',
+  ];
+
+  // Run an async fn against each Jupiter host until one returns. Helpful so
+  // a deprecated endpoint doesn't bring down the whole liquid-stake flow.
+  async function _jupTry(fn) {
+    let lastErr;
+    for (const host of JUP_HOSTS) {
+      try { return await fn(host); }
+      catch (e) { lastErr = e; }
+    }
+    throw lastErr || new Error('All Jupiter endpoints failed');
+  }
 
   async function getJupSolBalance(address) {
     try {
@@ -449,22 +469,28 @@ const SolanaWallet = (() => {
   // Returns SOL equivalent of 1 JupSOL via a quick Jupiter quote.
   async function getJupSolRate() {
     try {
-      const r = await fetch(`${JUP_API}/quote?inputMint=${JUPSOL_MINT}&outputMint=${SOL_MINT}&amount=1000000000&slippageBps=50`,
-        { signal: AbortSignal.timeout(8000) });
-      if (!r.ok) return null;
-      const j = await r.json();
-      return Number(j.outAmount) / 1e9;
+      return await _jupTry(async host => {
+        const r = await fetch(`${host}/quote?inputMint=${JUPSOL_MINT}&outputMint=${SOL_MINT}&amount=1000000000&slippageBps=50`,
+          { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        return Number(j.outAmount) / 1e9;
+      });
     } catch { return null; }
   }
 
   async function jupiterSwap(mnemonic, inputMint, outputMint, amountAtomic) {
     const kp = await deriveKeypair(mnemonic);
     const userPk = kp.publicKey.toBase58();
-    const qRes = await fetch(`${JUP_API}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountAtomic}&slippageBps=50`,
-      { signal: AbortSignal.timeout(10000) });
-    if (!qRes.ok) throw new Error(`Quote failed: HTTP ${qRes.status}`);
-    const quote = await qRes.json();
-    const sRes = await fetch(`${JUP_API}/swap`, {
+
+    const { quote, host } = await _jupTry(async host => {
+      const r = await fetch(`${host}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountAtomic}&slippageBps=50`,
+        { signal: AbortSignal.timeout(10000) });
+      if (!r.ok) throw new Error(`Quote HTTP ${r.status} from ${new URL(host).host}`);
+      return { quote: await r.json(), host };
+    });
+
+    const sRes = await fetch(`${host}/swap`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         quoteResponse: quote,
