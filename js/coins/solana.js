@@ -483,26 +483,39 @@ const SolanaWallet = (() => {
     const kp = await deriveKeypair(mnemonic);
     const userPk = kp.publicKey.toBase58();
 
-    const { quote, host } = await _jupTry(async host => {
-      const r = await fetch(`${host}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountAtomic}&slippageBps=50`,
-        { signal: AbortSignal.timeout(10000) });
-      if (!r.ok) throw new Error(`Quote HTTP ${r.status} from ${new URL(host).host}`);
-      return { quote: await r.json(), host };
-    });
+    let quote, host;
+    try {
+      ({ quote, host } = await _jupTry(async h => {
+        const r = await fetch(`${h}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountAtomic}&slippageBps=50`,
+          { signal: AbortSignal.timeout(10000) });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return { quote: await r.json(), host: h };
+      }));
+    } catch (e) {
+      throw new Error(`Jupiter quote unreachable (${e.message || e}). Check your connection or try again in a minute.`);
+    }
 
-    const sRes = await fetch(`${host}/swap`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        quoteResponse: quote,
-        userPublicKey: userPk,
-        wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: true,
-      }),
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!sRes.ok) throw new Error(`Swap build failed: HTTP ${sRes.status}`);
+    let sRes;
+    try {
+      sRes = await fetch(`${host}/swap`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quoteResponse: quote,
+          userPublicKey: userPk,
+          wrapAndUnwrapSol: true,
+          dynamicComputeUnitLimit: true,
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+    } catch (e) {
+      throw new Error(`Jupiter swap build unreachable (${e.message || e}). Try again in a minute.`);
+    }
+    if (!sRes.ok) {
+      const txt = await sRes.text().catch(() => '');
+      throw new Error(`Jupiter swap build failed: HTTP ${sRes.status}${txt ? ' — ' + txt.slice(0, 120) : ''}`);
+    }
     const { swapTransaction } = await sRes.json();
-    if (!swapTransaction) throw new Error('No swap transaction returned');
+    if (!swapTransaction) throw new Error('No swap transaction returned by Jupiter');
     const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
     const tx = solanaWeb3.VersionedTransaction.deserialize(txBytes);
     tx.sign([kp]);
