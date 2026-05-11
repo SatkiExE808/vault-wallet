@@ -240,6 +240,36 @@ const SolanaWallet = (() => {
     }
   }
 
+  // Look up validator metadata (name, logo, website) from the Stakewiz
+  // public API. Cached in localStorage for 24h so repeat modal opens
+  // don't hammer the API (and so the modal still shows names offline).
+  async function getValidatorInfo(voteAddress) {
+    if (!voteAddress) return null;
+    const cacheKey = `vault.sol.validator.${voteAddress}`;
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (cached.ts && Date.now() - cached.ts < 86400000) return cached.data;
+      }
+    } catch {}
+    try {
+      const r = await fetch(`https://api.stakewiz.com/validator/${voteAddress}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) return null;
+      const d = await r.json();
+      const data = {
+        name:    d.name || null,
+        image:   d.image || null,
+        website: d.website || null,
+        apy:     typeof d.apy_estimate === 'number' ? d.apy_estimate : null,
+      };
+      try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data })); } catch {}
+      return data;
+    } catch { return null; }
+  }
+
   // Batched last-epoch reward lookup for stake accounts. Unlike
   // getProgramAccounts, this method (getInflationReward) is supported by
   // most public RPCs. Returns parallel-indexed lamports — 0 when the
@@ -394,6 +424,6 @@ const SolanaWallet = (() => {
 
   return { deriveAddress, getBalance, sendSOL, getHistory,
            getStakeAccounts, stakeSOL, deactivateStake, withdrawStake,
-           getLastEpochRewards,
+           getLastEpochRewards, getValidatorInfo,
            getJupSolBalance, getJupSolRate, liquidStakeJupSol, liquidUnstakeJupSol };
 })();
