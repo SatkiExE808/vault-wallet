@@ -433,20 +433,40 @@
             histDiv.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:8px 0">No transactions yet.</p>
               ${url ? `<button class="btn btn-outline btn-sm wd-explorer-btn" data-url="${url}" style="margin-top:6px">View on explorer ↗</button>` : ''}`;
           } else {
+            // Tinted icon + verb based on tx.kind (set by coin modules
+            // that classify their history). Falls back to plain
+            // Sent/Received when the coin doesn't tag rows.
+            const TX_LABELS = {
+              'send':           { verb: 'Sent',            icon: '↑', tint: 'red'    },
+              'receive':        { verb: 'Received',        icon: '↓', tint: 'green'  },
+              'stake':          { verb: 'Staked',          icon: '🔒', tint: 'orange' },
+              'stake-withdraw': { verb: 'Withdrew stake',  icon: '↩', tint: 'green'  },
+              'stake-manage':   { verb: 'Stake action',    icon: '⚙', tint: 'orange' },
+              'liquid-stake':   { verb: 'Liquid staked',   icon: '💧', tint: 'cyan'   },
+              'liquid-unstake': { verb: 'Liquid unstaked', icon: '💧', tint: 'cyan'   },
+            };
+            const TX_TINTS = {
+              red:    { bg: 'rgba(239,68,68,0.15)',  fg: '#ef4444' },
+              green:  { bg: 'rgba(34,197,94,0.15)',  fg: '#22c55e' },
+              orange: { bg: 'rgba(249,115,22,0.15)', fg: '#f97316' },
+              cyan:   { bg: 'rgba(34,211,238,0.15)', fg: '#22d3ee' },
+            };
             histDiv.innerHTML = txs.map(tx => {
               const send = tx.type === 'send';
               const time = tx.time ? timeAgo(tx.time) : 'Pending';
               const url  = tx.explorerUrl || '';
               const st   = tx.status || (tx.confirmed ? 'ok' : 'pending');
+              const kind = tx.kind || (send ? 'send' : 'receive');
+              const lbl  = TX_LABELS[kind] || TX_LABELS[send ? 'send' : 'receive'];
+              const tint = TX_TINTS[lbl.tint] || TX_TINTS.red;
               const stColor = st === 'error' ? '#ef4444' : st === 'pending' ? '#eab308' : '#22c55e';
-              const stLabel = st === 'error' ? 'Failed' : st === 'pending' ? 'Pending' : 'OK';
+              const stLabel = st === 'error' ? 'Failed' : st === 'pending' ? 'Pending' : 'Completed';
               return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
                 <div style="width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
                   justify-content:center;font-size:14px;
-                  background:${send ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)'};
-                  color:${send ? '#ef4444' : '#22c55e'}">${send ? '↑' : '↓'}</div>
+                  background:${tint.bg};color:${tint.fg}">${lbl.icon}</div>
                 <div style="flex:1;min-width:0">
-                  <div style="font-size:13px;font-weight:600">${send ? 'Sent' : 'Received'} ${tx.amount} ${coin.symbol}</div>
+                  <div style="font-size:13px;font-weight:600">${lbl.verb} ${tx.amount} ${coin.symbol}</div>
                   <div style="font-size:11px;color:var(--text2);margin-top:2px">
                     <span>${time}</span>
                     <span style="color:${stColor};margin-left:6px">• ${stLabel}</span>

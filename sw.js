@@ -1,4 +1,4 @@
-const CACHE = 'vault-v117';
+const CACHE = 'vault-v118';
 const LOCAL_FILES = [
   './index.html',
   './manifest.json',
