@@ -484,10 +484,31 @@
           // Clear all caches so the new version is fetched fresh
           const keys = await caches.keys();
           await Promise.all(keys.map(k => caches.delete(k)));
-          location.reload();
+          // Plain location.reload() can keep parsed JS modules alive in
+          // the Capacitor WebView — change the URL query string so the
+          // page is treated as a fresh navigation.
+          const url = new URL(location.href);
+          url.searchParams.set('v', remoteVer);
+          location.replace(url.toString());
         }
       } else {
-        toast(`You're up to date (${localVer})`);
+        // Allow the user to force a navigation even when the SW version
+        // hasn't changed — useful when the WebView is still running stale
+        // JS modules in memory despite having the fresh cache.
+        const force = await (typeof confirmModal === 'function'
+          ? confirmModal({
+              title: 'Already up to date',
+              lines: [['Current build', localVer], ['Action', 'Force reload anyway to drop any stale JS held in memory.']],
+              confirmLabel: 'Force reload',
+            })
+          : Promise.resolve(false));
+        if (force) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
+          const url = new URL(location.href);
+          url.searchParams.set('v', Date.now());
+          location.replace(url.toString());
+        }
       }
     } catch (e) {
       toast('Update check failed: ' + (e.message || e.name));

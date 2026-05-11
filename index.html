@@ -406,19 +406,25 @@
       // still running whatever was loaded at startup. Reload once so the
       // user gets the new code without having to manually kill the app.
       let _swReloaded = false;
-      function _safeReload() {
+      function _safeReload(version) {
         if (_swReloaded) return;
         // Don't reload while a modal is open or a button is in-flight —
         // would lose user input or interrupt a pending signing tx. Retry
         // every couple seconds until safe.
         const modalOpen = !!document.querySelector('.modal-backdrop');
         const inFlightBtn = !!document.querySelector('button:disabled[id*="-do"], button:disabled[id*="-send"], button:disabled[id*="copy"]');
-        if (modalOpen || inFlightBtn) { setTimeout(_safeReload, 2500); return; }
+        if (modalOpen || inFlightBtn) { setTimeout(() => _safeReload(version), 2500); return; }
         _swReloaded = true;
-        location.reload();
+        // location.reload() can reuse Capacitor WebView's in-memory parsed
+        // JS modules, so a freshly-cached app.js never actually executes.
+        // Navigating to the same path with a different query string forces
+        // the WebView to discard its module state and re-evaluate.
+        const url = new URL(location.href);
+        url.searchParams.set('v', version || Date.now());
+        location.replace(url.toString());
       }
       navigator.serviceWorker.addEventListener('message', (e) => {
-        if (e.data?.type === 'SW_ACTIVATED') _safeReload();
+        if (e.data?.type === 'SW_ACTIVATED') _safeReload(e.data.version);
       });
     }
   </script>
