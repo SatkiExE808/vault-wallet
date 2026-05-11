@@ -1116,12 +1116,39 @@ body {
   display: flex;
   align-items: center;
 }
-.addr-input-group input {
+.addr-input-group input,
+.addr-input-group textarea {
   /* Leave room on the right for the two 38px icon buttons + gaps */
   padding-right: 88px !important;
 }
+.addr-input-group textarea {
+  /* Long addresses (SOL 44 chars, XMR 95 chars) used to vanish to the
+     right of a one-line input. Wrapping inside the field lets users see
+     the full string without having to drag-scroll inside the box. */
+  display: block;
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.45;
+  resize: none;
+  outline: none;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  min-height: 60px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.addr-input-group textarea:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+}
 .addr-icon-btn {
   position: absolute;
+  top: 9px;
   width: 38px;
   height: 38px;
   border-radius: 10px;
