@@ -1362,13 +1362,41 @@ function updateSendTab() {
 }
 
 // ── History tab ───────────────────────────────────────────────────────────────
+// Build a human-friendly timestamp combining a relative phrase ("4m ago")
+// with the absolute clock time and (when not today) the date. Examples:
+//   Just now · 17:14
+//   4m ago · 17:14
+//   1d ago · 17:14 · Yesterday
+//   3d ago · 14:30 · May 8
+//   14:30 · May 1                 (more than 30 days, same year)
+//   14:30 · May 1, 2025           (different year)
 function timeAgo(ms) {
-  const s = Math.floor((Date.now() - ms) / 1000);
-  if (s < 60)   return 'Just now';
-  if (s < 3600) return Math.floor(s / 60) + 'm ago';
-  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
-  if (s < 2592000) return Math.floor(s / 86400) + 'd ago';
-  return new Date(ms).toLocaleDateString();
+  const d = new Date(ms);
+  const now = new Date();
+  const s = Math.floor((now.getTime() - ms) / 1000);
+  const hhmm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  const sameDay = d.toDateString() === now.toDateString();
+  const yest = new Date(now); yest.setDate(yest.getDate() - 1);
+  const isYesterday = d.toDateString() === yest.toDateString();
+
+  let rel = null;
+  if (s < 60)         rel = 'Just now';
+  else if (s < 3600)  rel = Math.floor(s / 60)    + 'm ago';
+  else if (s < 86400) rel = Math.floor(s / 3600)  + 'h ago';
+  else if (s < 2592000) rel = Math.floor(s / 86400) + 'd ago';
+
+  // Decorate with date when not today. Older than 30d drops the relative phrase entirely.
+  let dateBit = '';
+  if (!sameDay) {
+    if (isYesterday) dateBit = 'Yesterday';
+    else if (d.getFullYear() !== now.getFullYear())
+      dateBit = d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    else
+      dateBit = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+
+  if (rel) return dateBit ? `${rel} · ${hhmm} · ${dateBit}` : `${rel} · ${hhmm}`;
+  return `${hhmm} · ${dateBit}`;
 }
 
 // Opens a URL in the device's external browser.
