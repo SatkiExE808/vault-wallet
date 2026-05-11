@@ -181,48 +181,115 @@ const SolanaWallet = (() => {
     return await rpcCall('getMinimumBalanceForRentExemption', [STAKE_SPACE]);
   }
 
-  // Lists stake accounts where the user is the withdraw authority.
-  async function getStakeAccounts(address) {
+  // Classify a stake account given its parsed accountInfo + current epoch.
+  // Shared between the getProgramAccounts path and the per-account
+  // getAccountInfo cache-hydration path.
+  function _classifyStake(pubkey, parsedInfo, lamports, currentEpoch) {
+    const stake = parsedInfo?.stake?.delegation;
+    const sol = (lamports / solanaWeb3.LAMPORTS_PER_SOL).toFixed(6);
+    const validator = stake?.voter || null;
+    let state = 'inactive';
+    if (stake) {
+      // BigInt-safe comparison: Solana uses u64::MAX
+      // (18446744073709551615) as a "never deactivates" sentinel which
+      // loses precision when coerced through Number().
+      const tip   = BigInt(currentEpoch);
+      const act   = BigInt(stake.activationEpoch   ?? '0');
+      const deact = BigInt(stake.deactivationEpoch ?? '0');
+      const NEVER = (1n << 64n) - 1n;
+      const isDeactivated  = deact !== NEVER && deact < tip;
+      const isDeactivating = deact !== NEVER && deact === tip;
+      const isActivating   = act > tip;
+      if      (isDeactivated)  state = 'inactive';
+      else if (isDeactivating) state = 'deactivating';
+      else if (isActivating)   state = 'activating';
+      else                     state = 'active';
+    }
+    return { pubkey, lamports, sol, validator, state };
+  }
+
+  // Persisted list of stake account pubkeys per withdraw-authority
+  // address. Used as a reliable fallback when getProgramAccounts is
+  // rate-limited / blocked by the public RPC (which is most of the time).
+  function _stakeCacheKey(addr) { return `vault.sol.stakeAccounts.${addr}`; }
+  function _readStakeCache(addr) {
     try {
-      // The withdraw authority lives at offset 44 inside the parsed stake account
-      // data; using getProgramAccounts with a memcmp filter is the standard pattern.
-      const res = await rpcCall('getProgramAccounts', [
+      const raw = localStorage.getItem(_stakeCacheKey(addr));
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(x => typeof x === 'string') : [];
+    } catch { return []; }
+  }
+  function _writeStakeCache(addr, pubkeys) {
+    try {
+      const unique = Array.from(new Set(pubkeys.filter(Boolean)));
+      localStorage.setItem(_stakeCacheKey(addr), JSON.stringify(unique));
+    } catch {}
+  }
+  function rememberStakeAccount(address, stakePubkey) {
+    if (!address || !stakePubkey) return;
+    _writeStakeCache(address, [..._readStakeCache(address), stakePubkey]);
+  }
+  function forgetStakeAccount(address, stakePubkey) {
+    if (!address || !stakePubkey) return;
+    _writeStakeCache(address, _readStakeCache(address).filter(p => p !== stakePubkey));
+  }
+
+  // Lists stake accounts where the user is the withdraw authority.
+  // Strategy:
+  //   1. Try getProgramAccounts (the canonical "find all my stakes" call).
+  //   2. Whatever it returns, union with the locally cached pubkey list
+  //      and refresh the cache. This means the modal still works after a
+  //      successful stake even if the RPC silently rate-limits later.
+  //   3. For any cached pubkey the RPC missed, fetch it individually via
+  //      getAccountInfo (a lightweight call public RPCs allow). If the
+  //      account is gone (withdrawn / closed), drop it from the cache.
+  async function getStakeAccounts(address) {
+    // Current epoch is needed by both paths; fetch in parallel.
+    const [rpcAccountsRaw, epochInfo] = await Promise.all([
+      rpcCall('getProgramAccounts', [
         solanaWeb3.StakeProgram.programId.toBase58(),
         {
           encoding: 'jsonParsed',
-          filters: [
-            { memcmp: { offset: 44, bytes: address } },
-          ],
+          filters: [{ memcmp: { offset: 44, bytes: address } }],
         },
-      ]);
-      const epoch = await rpcCall('getEpochInfo', []);
-      const currentEpoch = epoch?.epoch ?? 0;
-      return (res || []).map(a => {
-        const info     = a.account?.data?.parsed?.info || {};
-        const stake    = info.stake?.delegation;
-        const lamports = a.account?.lamports ?? 0;
-        const sol      = (lamports / solanaWeb3.LAMPORTS_PER_SOL).toFixed(6);
-        const validator = stake?.voter || null;
-        // Compare epochs as BigInt to safely handle Solana's u64::MAX
-        // sentinel ('18446744073709551615'), which loses precision when
-        // coerced through Number().
-        let state = 'inactive';
-        if (stake) {
-          const tip = BigInt(currentEpoch);
-          const act = BigInt(stake.activationEpoch ?? '0');
-          const deact = BigInt(stake.deactivationEpoch ?? '0');
-          const NEVER = (1n << 64n) - 1n;
-          const isDeactivated = deact !== NEVER && deact < tip;
-          const isDeactivating = deact !== NEVER && deact === tip;
-          const isActivating = act > tip;
-          if      (isDeactivated)  state = 'inactive';
-          else if (isDeactivating) state = 'deactivating';
-          else if (isActivating)   state = 'activating';
-          else                     state = 'active';
-        }
-        return { pubkey: a.pubkey, lamports, sol, validator, state };
-      });
-    } catch { return []; }
+      ]).catch(() => null),
+      rpcCall('getEpochInfo', []).catch(() => null),
+    ]);
+    const currentEpoch = epochInfo?.epoch ?? 0;
+
+    const fromRpc = Array.isArray(rpcAccountsRaw)
+      ? rpcAccountsRaw.map(a => _classifyStake(
+          a.pubkey,
+          a.account?.data?.parsed?.info || {},
+          a.account?.lamports ?? 0,
+          currentEpoch,
+        ))
+      : [];
+
+    // Hydrate any cached pubkeys the RPC didn't return.
+    const seen = new Set(fromRpc.map(a => a.pubkey));
+    const cached = _readStakeCache(address);
+    const missing = cached.filter(pk => !seen.has(pk));
+    const fromCache = await Promise.all(missing.map(async pk => {
+      const info = await rpcCall('getAccountInfo', [pk, { encoding: 'jsonParsed' }]).catch(() => null);
+      const value = info?.value;
+      if (!value) {
+        // Account no longer exists — withdraw must have closed it.
+        forgetStakeAccount(address, pk);
+        return null;
+      }
+      return _classifyStake(
+        pk,
+        value.data?.parsed?.info || {},
+        value.lamports ?? 0,
+        currentEpoch,
+      );
+    }));
+
+    const all = [...fromRpc, ...fromCache.filter(Boolean)];
+    // Persist the full set so next open is fast and resilient.
+    _writeStakeCache(address, all.map(a => a.pubkey));
+    return all;
   }
 
   // Vote program ID (canonical Solana vote program owner of every vote account)
@@ -309,7 +376,11 @@ const SolanaWallet = (() => {
     tx.feePayer = kp.publicKey;
     tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
     tx.sign(kp, stakeAccount);
-    return await conn.sendRawTransaction(tx.serialize());
+    const signature = await conn.sendRawTransaction(tx.serialize());
+    // Remember this stake account locally so getStakeAccounts() can still
+    // find it even when the public RPC rate-limits getProgramAccounts.
+    rememberStakeAccount(kp.publicKey.toBase58(), stakeAccount.publicKey.toBase58());
+    return signature;
   }
 
   async function deactivateStake(mnemonic, stakeAccountAddress) {
@@ -344,7 +415,11 @@ const SolanaWallet = (() => {
     tx.feePayer = kp.publicKey;
     tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
     tx.sign(kp);
-    return await conn.sendRawTransaction(tx.serialize());
+    const sig = await conn.sendRawTransaction(tx.serialize());
+    // Withdraw of the full balance closes the account — drop it from the
+    // local cache so the modal stops showing a ghost entry next time.
+    forgetStakeAccount(kp.publicKey.toBase58(), stakeAccountAddress);
+    return sig;
   }
 
   // ── Liquid staking via Jupiter (JupSOL) ─────────────────────────────
@@ -424,6 +499,7 @@ const SolanaWallet = (() => {
 
   return { deriveAddress, getBalance, sendSOL, getHistory,
            getStakeAccounts, stakeSOL, deactivateStake, withdrawStake,
+           rememberStakeAccount, forgetStakeAccount,
            getLastEpochRewards, getValidatorInfo,
            getJupSolBalance, getJupSolRate, liquidStakeJupSol, liquidUnstakeJupSol };
 })();
