@@ -1,4 +1,4 @@
-const CACHE = 'vault-v100';
+const CACHE = 'vault-v101';
 const LOCAL_FILES = [
   './index.html',
   './manifest.json',
@@ -29,18 +29,35 @@ const LOCAL_FILES = [
   './monero_web_worker.js',
 ];
 
-// Cache local files on install
+// Cache local files on install — fetched with cache:'no-store' so we
+// bypass the WebView's HTTP cache and any GitHub Pages CDN node still
+// serving the old build. Earlier we used cache.addAll, which respects
+// HTTP caching headers and would happily install stale JS files into a
+// fresh SW cache key. The result: SW says "v100" but the bundled
+// staking.js is still v99. This was the cause of the JupSOL "v100 is
+// live but Max still gives 0.006707" report — the user's app honestly
+// thought it was up to date because the cache key matched, while the
+// JS files inside it were old.
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(async cache => {
-      await cache.addAll(LOCAL_FILES);
-      // Icons are optional — don't fail install if they haven't been generated yet
-      await Promise.allSettled([
-        cache.add('./icons/icon-192.png'),
-        cache.add('./icons/icon-512.png'),
-      ]);
+    (async () => {
+      const cache = await caches.open(CACHE);
+      const fetches = LOCAL_FILES.map(async url => {
+        try {
+          const r = await fetch(url, { cache: 'no-store' });
+          if (r && r.status === 200) await cache.put(url, r);
+        } catch {}
+      });
+      await Promise.allSettled(fetches);
+      // Icons are optional — same no-store rule, don't fail install if missing.
+      await Promise.allSettled(['./icons/icon-192.png', './icons/icon-512.png'].map(async url => {
+        try {
+          const r = await fetch(url, { cache: 'no-store' });
+          if (r && r.status === 200) await cache.put(url, r);
+        } catch {}
+      }));
       return self.skipWaiting();
-    })
+    })()
   );
 });
 
@@ -60,19 +77,30 @@ self.addEventListener('activate', e => {
 });
 
 // Network-first for everything: always get fresh code when online,
-// fall back to cache when offline. This prevents the wallet from being
-// stuck on an old version after I push a fix.
+// fall back to cache when offline.
+//
+// Same-origin GETs go out with cache:'no-store' to bypass the WebView's
+// HTTP cache. Without this, GitHub Pages' default 10-min max-age would
+// keep serving the old JS bundle from the WebView's HTTP cache for up
+// to 10 minutes after I push a fix, even though the SW correctly
+// fetched and cached the new files. The user-visible symptom: SW
+// reports v101 but tapping Max still uses the v99 0.001 buffer because
+// staking.js came from HTTP cache. The SW cache layer still acts as
+// the offline fallback once we have the response.
 self.addEventListener('fetch', e => {
+  const req = e.request;
+  const sameOrigin = new URL(req.url).origin === self.location.origin;
+  const opts = (sameOrigin && req.method === 'GET') ? { cache: 'no-store' } : undefined;
   e.respondWith(
-    fetch(e.request)
+    (opts ? fetch(req, opts) : fetch(req))
       .then(res => {
         // Only cache successful same-origin responses + cross-origin OK responses
         if (res && res.status === 200 && res.type !== 'opaqueredirect') {
           const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone)).catch(() => {});
+          caches.open(CACHE).then(c => c.put(req, clone)).catch(() => {});
         }
         return res;
       })
-      .catch(() => caches.match(e.request))
+      .catch(() => caches.match(req))
   );
 });
