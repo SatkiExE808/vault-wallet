@@ -380,7 +380,42 @@ const SolanaWallet = (() => {
     // Remember this stake account locally so getStakeAccounts() can still
     // find it even when the public RPC rate-limits getProgramAccounts.
     rememberStakeAccount(kp.publicKey.toBase58(), stakeAccount.publicKey.toBase58());
+    // Also remember the initial stake size + timestamp so the modal can
+    // compute realtime profit (current lamports minus initial) without
+    // needing an indexer.
+    rememberStakeBasis(stakeAccount.publicKey.toBase58(), totalLamports);
     return signature;
+  }
+
+  // ── Stake-account cost basis ────────────────────────────────────────
+  // Per stake-account record of "what we paid into it on day one" so the
+  // modal can render a realtime-profit line. The current on-chain balance
+  // already includes accrued rewards (native staking compounds in place),
+  // so profit = currentLamports - initialLamports.
+  function _stakeBasisKey(pk) { return `vault.sol.stakeBasis.${pk}`; }
+  function rememberStakeBasis(stakePubkey, initialLamports, stakedAtMs) {
+    if (!stakePubkey || !initialLamports) return;
+    try {
+      localStorage.setItem(_stakeBasisKey(stakePubkey), JSON.stringify({
+        initialLamports,
+        stakedAt: stakedAtMs || Date.now(),
+      }));
+    } catch {}
+  }
+  function readStakeBasis(stakePubkey) {
+    try {
+      const raw = localStorage.getItem(_stakeBasisKey(stakePubkey));
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj || !Number.isFinite(Number(obj.initialLamports))) return null;
+      return {
+        initialLamports: Number(obj.initialLamports),
+        stakedAt: Number(obj.stakedAt) || Date.now(),
+      };
+    } catch { return null; }
+  }
+  function forgetStakeBasis(stakePubkey) {
+    try { localStorage.removeItem(_stakeBasisKey(stakePubkey)); } catch {}
   }
 
   async function deactivateStake(mnemonic, stakeAccountAddress) {
@@ -419,6 +454,7 @@ const SolanaWallet = (() => {
     // Withdraw of the full balance closes the account — drop it from the
     // local cache so the modal stops showing a ghost entry next time.
     forgetStakeAccount(kp.publicKey.toBase58(), stakeAccountAddress);
+    forgetStakeBasis(stakeAccountAddress);
     return sig;
   }
 
@@ -559,6 +595,7 @@ const SolanaWallet = (() => {
   return { deriveAddress, getBalance, sendSOL, getHistory,
            getStakeAccounts, stakeSOL, deactivateStake, withdrawStake,
            rememberStakeAccount, forgetStakeAccount,
+           rememberStakeBasis, readStakeBasis, forgetStakeBasis,
            getLastEpochRewards, getValidatorInfo,
            getJupSolBalance, getJupSolRate, liquidStakeJupSol, liquidUnstakeJupSol };
 })();
