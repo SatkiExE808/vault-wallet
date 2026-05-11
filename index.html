@@ -369,6 +369,10 @@
   <script src="https://cdn.jsdelivr.net/npm/tronweb@5.3.2/dist/TronWeb.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <!-- Minimal Buffer polyfill for Solana web3.js inside the Capacitor
+       WebView (no Node Buffer). Has to load BEFORE @solana/web3.js so
+       its internal `typeof Buffer` checks see the global. -->
+  <script src="lib/buffer-polyfill.js"></script>
   <script src="https://unpkg.com/@solana/web3.js@1.95.4/lib/index.iife.min.js"></script>
 
   <!-- Coin modules (utxo.js must load first) -->
