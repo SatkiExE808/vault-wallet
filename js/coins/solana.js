@@ -194,21 +194,16 @@ const SolanaWallet = (() => {
             type = delta < 0 ? 'send' : 'receive';
             amount = Math.abs(delta).toFixed(6);
           }
-          // Detect which programs the tx touched. Includes BOTH the
-          // top-level instructions and the meta.innerInstructions
-          // expansion, so swaps that route through a CPI to Jupiter
-          // (or stake CPIs) get classified correctly even when the
-          // outer program is something else (token program, etc.).
-          const topIxs   = d.transaction.message.instructions || [];
-          const innerIxs = (d.meta.innerInstructions || []).flatMap(g => g.instructions || []);
-          const allIxs   = [...topIxs, ...innerIxs];
-          const programIds = allIxs.map(ix => {
-            if (typeof ix.programId === 'string') return ix.programId;
-            if (typeof ix.programIdIndex === 'number') return keys[ix.programIdIndex];
-            return null;
-          }).filter(Boolean);
-          const hitStake = programIds.includes(PROG_STAKE);
-          const hitJup   = programIds.includes(PROG_JUP_V6) || programIds.includes(PROG_JUP_V4);
+          // Detect which programs the tx invoked by scanning the log
+          // messages. Every Solana program invocation emits a line like
+          //   "Program <ID> invoke [N]"
+          // which is far more reliable than parsing instruction
+          // programIdIndex — it covers static keys, ALT-loaded
+          // addresses, AND CPIs at any depth, without us needing to
+          // decode any account index logic.
+          const logs = (d.meta.logMessages || []).join('\n');
+          const hitStake = logs.includes(PROG_STAKE);
+          const hitJup   = logs.includes(PROG_JUP_V6) || logs.includes(PROG_JUP_V4);
           // Classify. We can't reliably parse stake-instruction discriminators
           // here so we use the signed delta as a proxy:
           //   stake → big negative (lamports go into the new stake account)
