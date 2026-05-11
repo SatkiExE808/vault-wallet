@@ -229,8 +229,63 @@ const Staking = (() => {
     };
 
     const listDiv = root.querySelector('#stake-list');
+
+    // Manual recovery flow — for stake accounts that exist on-chain but
+    // didn't get cached locally (created before v93, or while
+    // getProgramAccounts was failing). User pastes the pubkey, we
+    // validate as a Solana key, save to cache, then reload.
+    function addManualStakeAccount() {
+      const promptModal = showModal(`
+        <h2>Add Stake Account</h2>
+        <p>If your stake account isn't showing up here, paste its pubkey to add it manually. Find it on
+          <a href="https://solscan.io/account/${escapeHtml(addr)}#stakeAccounts" target="_blank" style="color:var(--accent)">solscan.io</a>.</p>
+        <div class="form-group">
+          <label>Stake account pubkey</label>
+          <input id="recover-pk" placeholder="B49Xj1AaLS…PhJg4x" autocomplete="off" spellcheck="false" autocapitalize="off">
+        </div>
+        <div id="recover-err" style="color:var(--red);font-size:13px;min-height:18px;margin-bottom:8px"></div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" id="recover-cancel">Cancel</button>
+          <button class="btn btn-primary" id="recover-ok">Add</button>
+        </div>
+      `);
+      const errDiv = promptModal.root.querySelector('#recover-err');
+      const input  = promptModal.root.querySelector('#recover-pk');
+      promptModal.root.querySelector('#recover-cancel').onclick = promptModal.close;
+      promptModal.root.querySelector('#recover-ok').onclick = () => {
+        const trimmed = (input.value || '').trim();
+        if (!trimmed) { errDiv.textContent = 'Enter a stake account pubkey'; return; }
+        try { new solanaWeb3.PublicKey(trimmed); }
+        catch { errDiv.textContent = 'Not a valid Solana pubkey'; return; }
+        SolanaWallet.rememberStakeAccount(addr, trimmed);
+        promptModal.close();
+        toast('Added — refreshing list…');
+        close();
+        openSolNativeModal();
+      };
+      setTimeout(() => input.focus(), 50);
+    }
+
+    const recoverBtnHtml = `
+      <div style="text-align:center;margin-top:8px">
+        <button type="button" class="link-btn" id="stk-recover"
+                style="font-size:12px;color:var(--accent);background:transparent;border:none;padding:6px 8px;cursor:pointer">
+          + Add existing stake account
+        </button>
+      </div>`;
+    function wireRecover() {
+      const btn = listDiv.querySelector('#stk-recover');
+      if (btn) btn.onclick = addManualStakeAccount;
+    }
+
     SolanaWallet.getStakeAccounts(addr).then(async accs => {
-      if (!accs.length) { listDiv.textContent = 'No stake accounts yet.'; return; }
+      if (!accs.length) {
+        listDiv.innerHTML = `
+          <div>No stake accounts yet.</div>
+          ${recoverBtnHtml}`;
+        wireRecover();
+        return;
+      }
       // Fetch in parallel: previous-epoch reward (one batched call) and the
       // validator metadata for each delegation (Stakewiz, cached 24h).
       const [rewardLamports, validatorInfos] = await Promise.all([
@@ -296,7 +351,8 @@ const Staking = (() => {
               ${rewardsHtml}
               ${projHtml}
             </div>`;
-        }).join('');
+        }).join('') + recoverBtnHtml;
+      wireRecover();
       listDiv.querySelectorAll('button[data-act]').forEach(btn => {
         btn.onclick = async () => {
           const action = btn.dataset.act, accPub = btn.dataset.acc;
