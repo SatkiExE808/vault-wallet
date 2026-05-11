@@ -128,16 +128,21 @@ const Staking = (() => {
       amountLabel.textContent = v === 'stake' ? 'Amount (SOL)' : 'Amount (JupSOL)';
     });
 
-    // Max fills in liquid SOL (minus fee buffer) when staking, or the full
-    // JupSOL balance when unstaking — picked by the current action toggle.
+    // Max fills in liquid SOL (minus tx-fee buffer) when staking, or the
+    // full JupSOL balance when unstaking — picked by the current toggle.
+    // JupSOL is a swap (not a stake account), so the buffer only needs to
+    // cover Jupiter's swap fee (~0.000005 SOL). 0.001 SOL is generous and
+    // doesn't strand small balances the way 0.01 did.
     root.querySelector('#stk-jup-max').onclick = () => {
       const action = actionSeg.getValue();
       if (action === 'stake') {
         const bal = parseFloat(state.balances['SOL']);
-        if (!Number.isFinite(bal) || bal <= 0) return;
-        root.querySelector('#stk-jup-amount').value = Math.max(0, bal - 0.01).toFixed(6);
+        if (!Number.isFinite(bal) || bal <= 0) { toast('No liquid SOL'); return; }
+        const max = bal - 0.001;
+        if (max <= 0) { toast('Need ~0.001 SOL extra to cover swap fee'); return; }
+        root.querySelector('#stk-jup-amount').value = max.toFixed(6);
       } else {
-        if (jupSolBal <= 0) return;
+        if (jupSolBal <= 0) { toast('No JupSOL to unstake'); return; }
         root.querySelector('#stk-jup-amount').value = jupSolBal.toFixed(6);
       }
     };
@@ -223,8 +228,12 @@ const Staking = (() => {
     // buffer "Max" reliably fails with "insufficient funds for rent".
     root.querySelector('#stk-max').onclick = () => {
       const bal = parseFloat(state.balances['SOL']);
-      if (!Number.isFinite(bal) || bal <= 0) return;
-      const max = Math.max(0, bal - 0.01);
+      if (!Number.isFinite(bal) || bal <= 0) { toast('No liquid SOL'); return; }
+      const max = bal - 0.01;
+      if (max <= 0) {
+        toast('Need ~0.01 SOL extra to cover rent reserve + tx fee');
+        return;
+      }
       root.querySelector('#stk-amount').value = max.toFixed(6);
     };
 
