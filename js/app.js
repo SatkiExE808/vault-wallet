@@ -1447,6 +1447,28 @@ async function updateHistoryTab() {
       const send = tx.type === 'send';
       const time = tx.time ? timeAgo(tx.time) : 'Pending';
       const st   = tx.status || (tx.confirmed ? 'ok' : 'pending');
+      // Action label + icon driven by tx.kind (set per-coin by history()).
+      // Solana history populates kind = stake / stake-withdraw / stake-manage
+      // / liquid-stake / liquid-unstake / send / receive. Other coins
+      // currently leave it undefined so they fall back to Sent/Received.
+      const kind = tx.kind || (send ? 'send' : 'receive');
+      const labels = {
+        'send':            { verb: 'Sent',           icon: '↑', tint: 'red'    },
+        'receive':         { verb: 'Received',       icon: '↓', tint: 'green'  },
+        'stake':           { verb: 'Staked',         icon: '🔒', tint: 'orange' },
+        'stake-withdraw':  { verb: 'Withdrew stake', icon: '↩', tint: 'green'  },
+        'stake-manage':    { verb: 'Stake action',   icon: '⚙', tint: 'orange' },
+        'liquid-stake':    { verb: 'Liquid staked',  icon: '💧', tint: 'cyan'   },
+        'liquid-unstake':  { verb: 'Liquid unstaked',icon: '💧', tint: 'cyan'   },
+      };
+      const lbl = labels[kind] || labels[send ? 'send' : 'receive'];
+      const tintColors = {
+        red:    { bg: 'rgba(239,68,68,0.15)',  fg: '#ef4444' },
+        green:  { bg: 'rgba(34,197,94,0.15)',  fg: '#22c55e' },
+        orange: { bg: 'rgba(249,115,22,0.15)', fg: '#f97316' },
+        cyan:   { bg: 'rgba(34,211,238,0.15)', fg: '#22d3ee' },
+      };
+      const tint = tintColors[lbl.tint] || tintColors.red;
       const badge = st === 'error'
         ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600;
              background:rgba(239,68,68,0.15);color:#ef4444">
@@ -1460,12 +1482,11 @@ async function updateHistoryTab() {
       return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
         <div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
           justify-content:center;font-size:15px;
-          background:${send ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)'};
-          color:${send ? '#ef4444' : '#22c55e'}">
-          ${send ? '↑' : '↓'}
+          background:${tint.bg};color:${tint.fg}">
+          ${lbl.icon}
         </div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600">${send ? 'Sent' : 'Received'} ${escapeHtml(tx.amount)} ${escapeHtml(coin.symbol)}</div>
+          <div style="font-size:13px;font-weight:600">${lbl.verb} ${escapeHtml(tx.amount)} ${escapeHtml(coin.symbol)}</div>
           <div style="font-size:11px;color:var(--text2);margin-top:2px;display:flex;align-items:center;gap:6px">
             <span>${time}</span>${badge}
           </div>

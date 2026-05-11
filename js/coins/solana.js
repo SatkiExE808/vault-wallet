@@ -157,6 +157,14 @@ const SolanaWallet = (() => {
     return await conn.sendRawTransaction(tx.serialize());
   }
 
+  // Known Solana program IDs we want to recognize in transaction history.
+  // Used to label rows as Stake / Withdraw / Liquid stake / etc. instead
+  // of the bare "Sent / Received" classification.
+  const PROG_STAKE   = 'Stake11111111111111111111111111111111111111';
+  const PROG_VOTE    = 'Vote111111111111111111111111111111111111111';
+  const PROG_JUP_V6  = 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4';
+  const PROG_JUP_V4  = 'JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB';
+
   async function getHistory(address) {
     try {
       const sigs = await rpcCall('getSignaturesForAddress', [address, { limit: 10 }]);
@@ -168,19 +176,42 @@ const SolanaWallet = (() => {
       for (let i = 0; i < sigs.length; i++) {
         const s = sigs[i];
         const d = details[i].status === 'fulfilled' ? details[i].value : null;
-        let type = 'send', amount = '—';
+        let type = 'send', amount = '—', kind = 'send', delta = 0;
         if (d && d.meta && d.transaction) {
-          const keys = d.transaction.message.accountKeys || [];
-          const idx = keys.findIndex(k => (typeof k === 'string' ? k : k?.pubkey) === address);
+          const keys = (d.transaction.message.accountKeys || []).map(k => typeof k === 'string' ? k : k?.pubkey);
+          const idx = keys.findIndex(k => k === address);
           if (idx >= 0) {
-            const delta = (d.meta.postBalances[idx] - d.meta.preBalances[idx]) / solanaWeb3.LAMPORTS_PER_SOL;
+            delta = (d.meta.postBalances[idx] - d.meta.preBalances[idx]) / solanaWeb3.LAMPORTS_PER_SOL;
             type = delta < 0 ? 'send' : 'receive';
             amount = Math.abs(delta).toFixed(6);
+          }
+          // Detect which programs the tx touched.
+          const programIds = (d.transaction.message.instructions || []).map(ix => {
+            if (typeof ix.programId === 'string') return ix.programId;
+            if (typeof ix.programIdIndex === 'number') return keys[ix.programIdIndex];
+            return null;
+          }).filter(Boolean);
+          const hitStake = programIds.includes(PROG_STAKE);
+          const hitJup   = programIds.includes(PROG_JUP_V6) || programIds.includes(PROG_JUP_V4);
+          // Classify. We can't reliably parse stake-instruction discriminators
+          // here so we use the signed delta as a proxy:
+          //   stake → big negative (lamports go into the new stake account)
+          //   withdraw → big positive (lamports come back to wallet)
+          //   manage (deactivate/etc.) → tiny / near-zero delta
+          //   Jupiter → swap is liquid stake (out) or unstake (in)
+          if (hitJup) {
+            kind = delta < 0 ? 'liquid-stake' : 'liquid-unstake';
+          } else if (hitStake) {
+            if (Math.abs(delta) < 0.0001) kind = 'stake-manage';
+            else if (delta < 0)           kind = 'stake';
+            else                          kind = 'stake-withdraw';
+          } else {
+            kind = type; // plain send / receive
           }
         }
         out.push({
           hash: s.signature,
-          type, amount,
+          type, amount, kind,
           time: s.blockTime ? s.blockTime * 1000 : null,
           confirmed: !s.err,
           status: s.err ? 'error' : 'ok',
