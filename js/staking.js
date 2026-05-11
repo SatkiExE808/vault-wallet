@@ -1,6 +1,43 @@
 // Staking UI — modal flow for SOL (validator delegation) and TRX (resource freezing).
 // Exposes window.openStakeModal(coinId).
 const Staking = (() => {
+  // ── JupSOL cost-basis tracking ─────────────────────────────────────
+  // Persists "SOL paid in" and "JupSOL acquired" per owner address so the
+  // modal can show realtime profit (current JupSOL value − cost basis).
+  // Stake adds to both totals; unstake reduces them proportionally so
+  // the remaining cost basis still matches the remaining JupSOL holdings.
+  function jupSolBasisKey(owner) { return `vault.jupsol.basis.${owner}`; }
+  function readJupSolBasis(owner) {
+    try {
+      const raw = localStorage.getItem(jupSolBasisKey(owner));
+      const obj = raw ? JSON.parse(raw) : { costSol: 0, jupSol: 0 };
+      return {
+        costSol: Number(obj.costSol) || 0,
+        jupSol:  Number(obj.jupSol)  || 0,
+      };
+    } catch { return { costSol: 0, jupSol: 0 }; }
+  }
+  function writeJupSolBasis(owner, basis) {
+    try { localStorage.setItem(jupSolBasisKey(owner), JSON.stringify(basis)); } catch {}
+  }
+  function recordJupSolStake(owner, solIn, jupSolOut) {
+    const b = readJupSolBasis(owner);
+    b.costSol += solIn;
+    b.jupSol  += jupSolOut;
+    writeJupSolBasis(owner, b);
+  }
+  function recordJupSolUnstake(owner, jupSolIn) {
+    const b = readJupSolBasis(owner);
+    if (b.jupSol <= 0) return;
+    // Reduce both legs proportionally so the cost basis per remaining
+    // JupSOL stays the same.
+    const frac = Math.min(1, jupSolIn / b.jupSol);
+    b.costSol = Math.max(0, b.costSol * (1 - frac));
+    b.jupSol  = Math.max(0, b.jupSol  - jupSolIn);
+    if (b.jupSol < 1e-9) { b.jupSol = 0; b.costSol = 0; }
+    writeJupSolBasis(owner, b);
+  }
+
   function el(html) {
     const t = document.createElement('template');
     t.innerHTML = html.trim();
@@ -113,15 +150,97 @@ const Staking = (() => {
     const infoDiv = root.querySelector('#stk-jup-info');
     // Track JupSOL balance so the Max button can fill it in when unstaking.
     let jupSolBal = 0;
+    // Current quote rate (SOL per JupSOL). Re-fetched every 8 s so the
+    // realtime-profit row reacts as Jupiter's quote moves.
+    let currentRate = null;
     Promise.all([SolanaWallet.getJupSolBalance(addr), SolanaWallet.getJupSolRate()])
       .then(([bal, rate]) => {
         jupSolBal = Number(bal) || 0;
-        const sol = rate ? (jupSolBal * rate).toFixed(6) : null;
-        infoDiv.innerHTML = `
-          <div>JupSOL balance: <b>${bal}</b>${sol ? ` (≈ ${sol} SOL)` : ''}</div>
-          ${rate ? `<div>Rate: 1 JupSOL ≈ ${rate.toFixed(6)} SOL</div>` : ''}
-        `;
+        currentRate = rate;
+        renderJupInfo();
       });
+
+    function renderJupInfo() {
+      const bal = jupSolBal.toFixed(6);
+      const sol = currentRate ? (jupSolBal * currentRate).toFixed(6) : null;
+      const basis = readJupSolBasis(addr);
+      // Profit only meaningful when we know cost basis AND our recorded
+      // JupSOL roughly matches what's actually on-chain (otherwise the
+      // user got JupSOL from somewhere we didn't track and the cost basis
+      // is unreliable).
+      let profitHtml = '';
+      if (currentRate && basis.costSol > 0 && basis.jupSol > 0 && jupSolBal > 1e-9) {
+        const costBasisPerJup = basis.costSol / basis.jupSol;
+        const profitPerJup    = currentRate - costBasisPerJup;
+        const profitSol       = profitPerJup * jupSolBal;
+        const profitPct       = (profitPerJup / costBasisPerJup) * 100;
+        const positive        = profitSol >= 0;
+        const color           = positive ? 'var(--green)' : 'var(--red)';
+        const sign            = positive ? '+' : '−';
+        profitHtml = `
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
+            <span style="color:var(--text2)">Realtime profit</span>
+            <span style="color:${color};font-weight:700;font-variant-numeric:tabular-nums">
+              ${sign}${Math.abs(profitSol).toFixed(6)} SOL (${sign}${Math.abs(profitPct).toFixed(2)}%)
+            </span>
+          </div>`;
+      } else if (currentRate && jupSolBal > 1e-9 && basis.costSol === 0) {
+        // User has JupSOL but no recorded cost basis (e.g. staked on an
+        // earlier app version, or imported a wallet that already had
+        // JupSOL). Offer to start tracking profit from the current rate.
+        profitHtml = `
+          <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);text-align:center">
+            <button type="button" id="jup-seed-basis" class="link-btn"
+                    style="font-size:12px;color:var(--accent);background:transparent;border:none;padding:4px 0;cursor:pointer">
+              Start tracking profit from current rate →
+            </button>
+          </div>`;
+      }
+      infoDiv.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px">
+          <img src="https://static.jup.ag/jupSOL/icon.png" alt=""
+               style="width:20px;height:20px;border-radius:50%;flex-shrink:0;background:var(--surface)"
+               onerror="this.style.display='none'">
+          <span>JupSOL balance: <b>${bal}</b>${sol ? ` (≈ ${sol} SOL)` : ''}</span>
+        </div>
+        ${currentRate ? `<div style="margin-top:4px">Rate: 1 JupSOL ≈ ${currentRate.toFixed(6)} SOL</div>` : ''}
+        ${profitHtml}
+      `;
+      const seedBtn = infoDiv.querySelector('#jup-seed-basis');
+      if (seedBtn) seedBtn.onclick = () => {
+        // Seed cost basis to "as if user paid current rate × current balance".
+        // Profit starts at 0 right now and grows as the JupSOL rate increases.
+        if (!currentRate || jupSolBal <= 0) return;
+        writeJupSolBasis(addr, {
+          costSol: currentRate * jupSolBal,
+          jupSol:  jupSolBal,
+        });
+        toast('Tracking profit from current rate');
+        renderJupInfo();
+      };
+    }
+
+    // Live-poll the rate every 8 s so the profit row stays current while
+    // the modal is open. Clears itself when the modal closes.
+    const rateTimer = setInterval(async () => {
+      try {
+        const r = await SolanaWallet.getJupSolRate();
+        if (r && r !== currentRate) {
+          currentRate = r;
+          renderJupInfo();
+        }
+      } catch {}
+    }, 8000);
+    root.addEventListener('remove', () => clearInterval(rateTimer));
+    // Belt-and-suspenders: MutationObserver clears the timer when this
+    // modal node is removed from the DOM (close() does .remove()).
+    const observer = new MutationObserver(() => {
+      if (!document.body.contains(root)) {
+        clearInterval(rateTimer);
+        observer.disconnect();
+      }
+    });
+    observer.observe(document.body, { childList: true });
 
     const amountLabel = root.querySelector('#stk-jup-amount-label');
     const actionSeg = wireSeg(root, 'stk-jup-action', v => {
@@ -177,9 +296,20 @@ const Staking = (() => {
       const btn = root.querySelector('#stk-jup-do');
       btn.disabled = true; btn.textContent = `${verb === 'stake' ? 'Staking' : 'Unstaking'}…`;
       try {
-        const sig = action === 'stake'
+        const result = action === 'stake'
           ? await SolanaWallet.liquidStakeJupSol(state.mnemonic, amt)
           : await SolanaWallet.liquidUnstakeJupSol(state.mnemonic, amt);
+        // jupiterSwap returns { signature, inAmountAtomic, outAmountAtomic }
+        // since v102. Fall back to string-only result for forward safety.
+        const sig         = typeof result === 'string' ? result : result.signature;
+        const outAtomic   = typeof result === 'object' ? Number(result.outAmountAtomic || 0) : 0;
+        // Record cost basis so the modal can show realtime profit later.
+        if (action === 'stake') {
+          // Out is JupSOL (9 decimals).
+          recordJupSolStake(addr, parseFloat(amt), outAtomic / 1e9);
+        } else {
+          recordJupSolUnstake(addr, parseFloat(amt));
+        }
         toast(action === 'stake' ? 'Liquid stake submitted' : 'Unstake submitted', {
           href: `https://solscan.io/tx/${sig}`,
         });

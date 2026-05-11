@@ -520,8 +520,9 @@ const SolanaWallet = (() => {
     const tx = solanaWeb3.VersionedTransaction.deserialize(txBytes);
     tx.sign([kp]);
     const conn = await _conn();
+    let signature;
     try {
-      return await conn.sendRawTransaction(tx.serialize());
+      signature = await conn.sendRawTransaction(tx.serialize());
     } catch (e) {
       const msg = String(e?.message || e);
       // SPL Token program throws 0x1 ("InsufficientFunds") when there isn't
@@ -532,6 +533,14 @@ const SolanaWallet = (() => {
       }
       throw e;
     }
+    // Returns the signature plus the atomic-unit amounts Jupiter quoted
+    // for the trade. Callers use these to track JupSOL cost basis
+    // (SOL paid for the JupSOL we currently hold → realtime profit).
+    return {
+      signature,
+      inAmountAtomic:  Number(quote.inAmount  || amountAtomic),
+      outAmountAtomic: Number(quote.outAmount || 0),
+    };
   }
 
   async function liquidStakeJupSol(mnemonic, solAmount) {
