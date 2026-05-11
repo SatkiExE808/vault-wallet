@@ -3,9 +3,33 @@
 // path m/44'/501'/0'/0' is otherwise standard.
 const SolanaWallet = (() => {
   const RPCS = [
-    'https://api.mainnet-beta.solana.com',
     'https://solana-rpc.publicnode.com',
+    'https://api.mainnet-beta.solana.com',
+    'https://rpc.ankr.com/solana',
+    'https://solana.api.onfinality.io/public',
   ];
+
+  // Build a Connection backed by the first RPC that actually responds.
+  // The hardcoded `new Connection(RPCS[0], …)` pattern used to throw
+  // "failed to get recent blockhash: 403 Access forbidden" whenever the
+  // first endpoint (api.mainnet-beta) rate-limited the caller — staking
+  // and JupSOL swaps would crash even though sendSOL's rpcCall() loop
+  // had a perfectly working fallback.
+  async function _conn() {
+    let lastErr;
+    for (const url of RPCS) {
+      try {
+        const c = new solanaWeb3.Connection(url, 'confirmed');
+        // Probe with a lightweight call so we discover dead/limited
+        // endpoints before signing a transaction with them.
+        await c.getLatestBlockhash();
+        return c;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw new Error('All Solana RPC endpoints failed: ' + (lastErr?.message || lastErr));
+  }
 
   function hexToBytes(hex) {
     if (hex.startsWith('0x')) hex = hex.slice(2);
@@ -90,7 +114,7 @@ const SolanaWallet = (() => {
 
   async function sendSOL(mnemonic, to, amount) {
     const kp = await deriveKeypair(mnemonic);
-    const conn = new solanaWeb3.Connection(RPCS[0], 'confirmed');
+    const conn = await _conn();
     const lamports = Math.floor(Number(amount) * solanaWeb3.LAMPORTS_PER_SOL);
     if (!Number.isFinite(lamports) || lamports <= 0) throw new Error('Invalid amount');
     const toPk = new solanaWeb3.PublicKey(to);
@@ -219,7 +243,7 @@ const SolanaWallet = (() => {
   async function stakeSOL(mnemonic, validatorVoteAddress, amount) {
     await assertIsVoteAccount(validatorVoteAddress);
     const kp = await deriveKeypair(mnemonic);
-    const conn = new solanaWeb3.Connection(RPCS[0], 'confirmed');
+    const conn = await _conn();
     const lamports = Math.floor(Number(amount) * solanaWeb3.LAMPORTS_PER_SOL);
     if (!Number.isFinite(lamports) || lamports <= 0) throw new Error('Invalid amount');
     const rent = await getStakeRent();
@@ -246,7 +270,7 @@ const SolanaWallet = (() => {
 
   async function deactivateStake(mnemonic, stakeAccountAddress) {
     const kp = await deriveKeypair(mnemonic);
-    const conn = new solanaWeb3.Connection(RPCS[0], 'confirmed');
+    const conn = await _conn();
     const tx = new solanaWeb3.Transaction().add(
       solanaWeb3.StakeProgram.deactivate({
         stakePubkey: new solanaWeb3.PublicKey(stakeAccountAddress),
@@ -261,7 +285,7 @@ const SolanaWallet = (() => {
 
   async function withdrawStake(mnemonic, stakeAccountAddress) {
     const kp = await deriveKeypair(mnemonic);
-    const conn = new solanaWeb3.Connection(RPCS[0], 'confirmed');
+    const conn = await _conn();
     const stakePk = new solanaWeb3.PublicKey(stakeAccountAddress);
     const accInfo = await conn.getAccountInfo(stakePk);
     if (!accInfo) throw new Error('Stake account not found');
@@ -337,7 +361,7 @@ const SolanaWallet = (() => {
     const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
     const tx = solanaWeb3.VersionedTransaction.deserialize(txBytes);
     tx.sign([kp]);
-    const conn = new solanaWeb3.Connection(RPCS[0], 'confirmed');
+    const conn = await _conn();
     return await conn.sendRawTransaction(tx.serialize());
   }
 
