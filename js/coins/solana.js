@@ -124,17 +124,25 @@ const SolanaWallet = (() => {
     if (!solanaWeb3.PublicKey.isOnCurve(toPk.toBytes())) {
       throw new Error('Recipient is not a valid SOL account (off-curve / PDA)');
     }
-    const tx = new solanaWeb3.Transaction().add(
-      solanaWeb3.SystemProgram.transfer({
-        fromPubkey: kp.publicKey,
-        toPubkey: toPk,
-        lamports,
-      })
-    );
-    tx.feePayer = kp.publicKey;
+    const ix = solanaWeb3.SystemProgram.transfer({
+      fromPubkey: kp.publicKey,
+      toPubkey: toPk,
+      lamports,
+    });
+    // VersionedTransaction (not legacy Transaction). The legacy class
+    // calls Node's Buffer internally inside .serialize(), and the
+    // Capacitor WebView has no Buffer polyfill — sends were failing
+    // with "Error: Buffer is not defined". VersionedTransaction's
+    // serialize() works on plain Uint8Array, same code path the JupSOL
+    // swap already uses successfully.
     const { blockhash } = await conn.getLatestBlockhash();
-    tx.recentBlockhash = blockhash;
-    tx.sign(kp);
+    const msg = new solanaWeb3.TransactionMessage({
+      payerKey: kp.publicKey,
+      recentBlockhash: blockhash,
+      instructions: [ix],
+    }).compileToV0Message();
+    const tx = new solanaWeb3.VersionedTransaction(msg);
+    tx.sign([kp]);
     return await conn.sendRawTransaction(tx.serialize());
   }
 
@@ -360,22 +368,29 @@ const SolanaWallet = (() => {
     const rent = await getStakeRent();
     const stakeAccount = solanaWeb3.Keypair.generate();
     const totalLamports = lamports + rent;
-    const tx = new solanaWeb3.Transaction()
-      .add(solanaWeb3.StakeProgram.createAccount({
-        fromPubkey: kp.publicKey,
-        stakePubkey: stakeAccount.publicKey,
-        authorized: new solanaWeb3.Authorized(kp.publicKey, kp.publicKey),
-        lockup: new solanaWeb3.Lockup(0, 0, kp.publicKey),
-        lamports: totalLamports,
-      }))
-      .add(solanaWeb3.StakeProgram.delegate({
-        stakePubkey: stakeAccount.publicKey,
-        authorizedPubkey: kp.publicKey,
-        votePubkey: new solanaWeb3.PublicKey(validatorVoteAddress),
-      }));
-    tx.feePayer = kp.publicKey;
-    tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
-    tx.sign(kp, stakeAccount);
+    // StakeProgram helpers return Transaction objects; we want the raw
+    // Instructions to build a VersionedTransaction (avoids the Node
+    // Buffer dependency in legacy Transaction.serialize()).
+    const createTx = solanaWeb3.StakeProgram.createAccount({
+      fromPubkey: kp.publicKey,
+      stakePubkey: stakeAccount.publicKey,
+      authorized: new solanaWeb3.Authorized(kp.publicKey, kp.publicKey),
+      lockup: new solanaWeb3.Lockup(0, 0, kp.publicKey),
+      lamports: totalLamports,
+    });
+    const delegateTx = solanaWeb3.StakeProgram.delegate({
+      stakePubkey: stakeAccount.publicKey,
+      authorizedPubkey: kp.publicKey,
+      votePubkey: new solanaWeb3.PublicKey(validatorVoteAddress),
+    });
+    const { blockhash } = await conn.getLatestBlockhash();
+    const msg = new solanaWeb3.TransactionMessage({
+      payerKey: kp.publicKey,
+      recentBlockhash: blockhash,
+      instructions: [...createTx.instructions, ...delegateTx.instructions],
+    }).compileToV0Message();
+    const tx = new solanaWeb3.VersionedTransaction(msg);
+    tx.sign([kp, stakeAccount]);
     const signature = await conn.sendRawTransaction(tx.serialize());
     // Remember this stake account locally so getStakeAccounts() can still
     // find it even when the public RPC rate-limits getProgramAccounts.
@@ -421,15 +436,18 @@ const SolanaWallet = (() => {
   async function deactivateStake(mnemonic, stakeAccountAddress) {
     const kp = await deriveKeypair(mnemonic);
     const conn = await _conn();
-    const tx = new solanaWeb3.Transaction().add(
-      solanaWeb3.StakeProgram.deactivate({
-        stakePubkey: new solanaWeb3.PublicKey(stakeAccountAddress),
-        authorizedPubkey: kp.publicKey,
-      })
-    );
-    tx.feePayer = kp.publicKey;
-    tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
-    tx.sign(kp);
+    const deTx = solanaWeb3.StakeProgram.deactivate({
+      stakePubkey: new solanaWeb3.PublicKey(stakeAccountAddress),
+      authorizedPubkey: kp.publicKey,
+    });
+    const { blockhash } = await conn.getLatestBlockhash();
+    const msg = new solanaWeb3.TransactionMessage({
+      payerKey: kp.publicKey,
+      recentBlockhash: blockhash,
+      instructions: [...deTx.instructions],
+    }).compileToV0Message();
+    const tx = new solanaWeb3.VersionedTransaction(msg);
+    tx.sign([kp]);
     return await conn.sendRawTransaction(tx.serialize());
   }
 
@@ -439,17 +457,20 @@ const SolanaWallet = (() => {
     const stakePk = new solanaWeb3.PublicKey(stakeAccountAddress);
     const accInfo = await conn.getAccountInfo(stakePk);
     if (!accInfo) throw new Error('Stake account not found');
-    const tx = new solanaWeb3.Transaction().add(
-      solanaWeb3.StakeProgram.withdraw({
-        stakePubkey: stakePk,
-        authorizedPubkey: kp.publicKey,
-        toPubkey: kp.publicKey,
-        lamports: accInfo.lamports,
-      })
-    );
-    tx.feePayer = kp.publicKey;
-    tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
-    tx.sign(kp);
+    const wTx = solanaWeb3.StakeProgram.withdraw({
+      stakePubkey: stakePk,
+      authorizedPubkey: kp.publicKey,
+      toPubkey: kp.publicKey,
+      lamports: accInfo.lamports,
+    });
+    const { blockhash } = await conn.getLatestBlockhash();
+    const msg = new solanaWeb3.TransactionMessage({
+      payerKey: kp.publicKey,
+      recentBlockhash: blockhash,
+      instructions: [...wTx.instructions],
+    }).compileToV0Message();
+    const tx = new solanaWeb3.VersionedTransaction(msg);
+    tx.sign([kp]);
     const sig = await conn.sendRawTransaction(tx.serialize());
     // Withdraw of the full balance closes the account — drop it from the
     // local cache so the modal stops showing a ghost entry next time.
