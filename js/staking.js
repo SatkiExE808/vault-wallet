@@ -180,7 +180,9 @@ const Staking = (() => {
         const sig = action === 'stake'
           ? await SolanaWallet.liquidStakeJupSol(state.mnemonic, amt)
           : await SolanaWallet.liquidUnstakeJupSol(state.mnemonic, amt);
-        toast(`Done! TX: ${String(sig).slice(0, 20)}…`);
+        toast(action === 'stake' ? 'Liquid stake submitted' : 'Unstake submitted', {
+          href: `https://solscan.io/tx/${sig}`,
+        });
         if (typeof Inbox !== 'undefined') Inbox.add({
           type: 'stake',
           title: action === 'stake' ? 'JupSOL liquid stake complete' : 'JupSOL unstaked',
@@ -418,7 +420,7 @@ const Staking = (() => {
       btn.disabled = true; btn.textContent = 'Staking…';
       try {
         const sig = await SolanaWallet.stakeSOL(state.mnemonic, validator, amt);
-        toast(`Staked! TX: ${sig.slice(0, 20)}…`);
+        toast('SOL stake submitted', { href: `https://solscan.io/tx/${sig}` });
         if (typeof Inbox !== 'undefined') Inbox.add({
           type: 'stake',
           title: 'SOL stake delegated',
@@ -585,7 +587,9 @@ const Staking = (() => {
           const txid = action === 'freeze'
             ? await TronWallet.freezeTRX(state.mnemonic, amt, resource)
             : await TronWallet.unfreezeTRX(state.mnemonic, amt, resource);
-          toast(`Done! TX: ${String(txid).slice(0, 20)}…`);
+          toast(action === 'freeze' ? 'TRX stake submitted' : 'Unstake submitted', {
+            href: `https://tronscan.org/#/transaction/${txid}`,
+          });
           if (typeof Inbox !== 'undefined') Inbox.add({
             type: 'stake',
             title: action === 'freeze' ? 'TRX staked (frozen)' : 'TRX unstaked',
@@ -612,7 +616,7 @@ const Staking = (() => {
         btn.disabled = true; btn.textContent = 'Submitting…';
         try {
           const txid = await TronWallet.withdrawUnfrozenTRX(state.mnemonic);
-          toast(`Done! TX: ${String(txid).slice(0, 20)}…`);
+          toast('Withdraw submitted', { href: `https://tronscan.org/#/transaction/${txid}` });
           if (typeof Inbox !== 'undefined') Inbox.add({
             type: 'stake',
             title: 'TRX withdrawn from stake',
@@ -644,7 +648,7 @@ const Staking = (() => {
         btn.disabled = true; btn.textContent = 'Voting…';
         try {
           const txid = await TronWallet.voteForSR(state.mnemonic, srAddr, count);
-          toast(`Voted! TX: ${String(txid).slice(0, 20)}…`);
+          toast('Vote submitted', { href: `https://tronscan.org/#/transaction/${txid}` });
           if (typeof Inbox !== 'undefined') Inbox.add({
             type: 'stake',
             title: 'TRX vote cast',
@@ -670,7 +674,7 @@ const Staking = (() => {
         btn.disabled = true; btn.textContent = 'Claiming…';
         try {
           const txid = await TronWallet.claimRewards(state.mnemonic);
-          toast(`Claimed! TX: ${String(txid).slice(0, 20)}…`);
+          toast('Rewards claimed', { href: `https://tronscan.org/#/transaction/${txid}` });
           if (typeof Inbox !== 'undefined') Inbox.add({
             type: 'stake',
             title: 'TRX rewards claimed',

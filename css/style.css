@@ -890,18 +890,50 @@ body {
   transform: translateX(-50%) translateY(20px);
   background: var(--surface3);
   border: 1px solid var(--border2);
-  border-radius: 12px;
-  padding: 12px 18px;
+  border-radius: 14px;
+  padding: 12px 16px;
   font-size: 14px;
   font-weight: 500;
   z-index: 999;
   opacity: 0;
   transition: opacity 0.25s, transform 0.25s;
   pointer-events: none;
-  max-width: 90%;
+  max-width: 92%;
   box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+/* Tappable toast (has an action link) must accept clicks. */
+#toast.has-action { pointer-events: auto; }
+#toast .toast-msg { color: var(--text); }
+#toast .toast-icon {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgba(16,185,129,0.18);
+  color: #34d399;
+}
+#toast .toast-action {
+  margin-left: 4px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
+  background: rgba(249,115,22,0.12);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+#toast .toast-action:active { background: rgba(249,115,22,0.22); }
+#toast.toast-success {
+  border-color: rgba(16,185,129,0.4);
+}
 
 /* ── Network badge ──────────────────────────────────────────── */
 .network-badge {
