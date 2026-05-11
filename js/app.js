@@ -1942,9 +1942,41 @@ async function refreshFeeDisplay(coinId) {
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 let _toastTimer;
-function toast(msg, ms = 3000) {
+// Backwards-compatible toast:
+//   toast('Saved')                   → plain text, 3 s
+//   toast('Saved', 5000)             → plain text, custom duration
+//   toast('Done', { href, label })   → tappable link inside the toast
+//   toast('Done', { type:'success' }) → green check on the left
+function toast(msg, opts = {}) {
   const el = document.getElementById('toast');
-  el.textContent = msg;
+  const ms = typeof opts === 'number' ? opts : (opts.ms || 3000);
+  const isObj = typeof opts === 'object' && opts !== null && typeof opts !== 'number';
+  const href = isObj ? opts.href : null;
+  const label = isObj ? (opts.label || 'View ↗') : null;
+  const type = isObj ? (opts.type || (href ? 'success' : '')) : '';
+  el.innerHTML = '';
+  el.className = '';
+  if (type) el.classList.add('toast-' + type);
+  if (type === 'success') {
+    const ic = document.createElement('span');
+    ic.className = 'toast-icon';
+    ic.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><polyline points="20 6 9 17 4 12"/></svg>`;
+    el.appendChild(ic);
+  }
+  const msgSpan = document.createElement('span');
+  msgSpan.className = 'toast-msg';
+  msgSpan.textContent = msg;
+  el.appendChild(msgSpan);
+  if (href) {
+    el.classList.add('has-action');
+    const a = document.createElement('a');
+    a.className = 'toast-action';
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.textContent = label;
+    el.appendChild(a);
+  }
   el.classList.add('show');
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => el.classList.remove('show'), ms);
