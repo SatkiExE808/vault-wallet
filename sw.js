@@ -1,4 +1,4 @@
-const CACHE = 'vault-v107';
+const CACHE = 'vault-v108';
 const LOCAL_FILES = [
   './index.html',
   './manifest.json',
@@ -22,6 +22,9 @@ const LOCAL_FILES = [
   './js/coins/monero.js',
   './js/coins/tron.js',
   './js/coins/solana.js',
+  // Buffer polyfill loaded BEFORE solana-web3.js so its internal
+  // typeof Buffer checks see the global.
+  './lib/buffer-polyfill.js',
   // Monero browser bundle + worker + wasm — needed for offline XMR support.
   './lib/monero-browser.js',
   './lib/monero_wallet_full.js',
