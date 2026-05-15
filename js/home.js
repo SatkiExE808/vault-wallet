@@ -191,6 +191,12 @@
 
   // Wallet view: which coin is currently displayed at top
   let walletDisplayCoin = null;
+  // Tracks whether the last renderWalletDisplay call switched coins so the
+  // function can know to reset open send/history forms only on a real
+  // change of context — not on every balance refresh re-render. Without
+  // this, the inline send form silently snaps shut every ~30 s while the
+  // user is mid-edit.
+  let _lastRenderedCoin = null;
 
   // Opens an info modal that walks the user through verifying the displayed
   // multi-address in a third-party BIP84/BIP44 wallet. Critical safety
@@ -625,9 +631,15 @@
       requestAnimationFrame(() => histDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
     };
 
-    // Hide forms when switching coins
-    $('wd-send-form').style.display = 'none';
-    $('wd-history-list').style.display = 'none';
+    // Only reset forms when the displayed coin actually changed — a plain
+    // balance refresh (same coin) must NOT yank an open send/history away
+    // from the user mid-edit.
+    if (_lastRenderedCoin !== coin.id) {
+      $('wd-send-form').style.display = 'none';
+      $('wd-history-list').style.display = 'none';
+      setActiveAction(null);
+    }
+    _lastRenderedCoin = coin.id;
 
     // Highlight selected coin in the picker list
     document.querySelectorAll('#wallet-asset-list .asset-item').forEach(el => {
