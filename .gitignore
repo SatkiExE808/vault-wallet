@@ -4,3 +4,11 @@ android/
 ios/
 .DS_Store
 vault-wallet.apk
+
+# Xcode / iOS build artifacts (in case a generated ios/ folder ever gets force-added)
+*.xcuserstate
+xcuserdata/
+DerivedData/
+Pods/
+Podfile.lock
+*.ipa

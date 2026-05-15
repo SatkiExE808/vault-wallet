@@ -5,10 +5,18 @@
   "server": {
     "url": "https://satkiexe808.github.io/vault-wallet/",
     "androidScheme": "https",
+    "iosScheme": "https",
     "cleartext": false
   },
   "android": {
     "backgroundColor": "#0f1117",
     "allowMixedContent": false
+  },
+  "ios": {
+    "backgroundColor": "#0f1117",
+    "contentInset": "always",
+    "allowsLinkPreview": false,
+    "scrollEnabled": false,
+    "limitsNavigationsToAppBoundDomains": false
   }
 }

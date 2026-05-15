@@ -10,6 +10,7 @@ No server. No account. No third party. Your keys never leave your device.
 
 [![PWA](https://img.shields.io/badge/PWA-Live-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)](https://satkiexe808.github.io/vault-wallet/)
 [![Android APK](https://img.shields.io/badge/Android-APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/SatkiExE808/vault-wallet/releases/latest)
+[![iOS](https://img.shields.io/badge/iOS-build_from_source-000000?style=for-the-badge&logo=apple&logoColor=white)](#-build-ios-app)
 [![Capacitor](https://img.shields.io/badge/Capacitor-8.3-119EFF?style=for-the-badge&logo=capacitor&logoColor=white)](https://capacitorjs.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 [![Self-Custodial](https://img.shields.io/badge/Custody-Yours-orange?style=for-the-badge)](#-security)
@@ -212,6 +213,64 @@ The APK has `server.url` pointing at the GitHub Pages URL, so pushes to `main` r
 
 ---
 
+## 🍎 Build iOS app
+
+The repo is already configured for iOS via Capacitor — you just need to generate the Xcode project locally and build. **Build environment must be macOS** with Xcode + CocoaPods.
+
+<details><summary><b>Prerequisites</b></summary>
+
+- macOS with [Xcode](https://apps.apple.com/app/xcode/id497799835) (free, ~30 GB)
+- [CocoaPods](https://cocoapods.org/): `brew install cocoapods` (or `sudo gem install cocoapods`)
+- [Node.js](https://nodejs.org) v18+
+- For sideloading to your own iPhone: a free Apple ID is enough (7-day signing expiration)
+- For TestFlight / App Store: [Apple Developer Program](https://developer.apple.com/programs/) ($99/year)
+</details>
+
+### Scaffold the iOS project (one-time)
+
+```bash
+npm install                  # installs @capacitor/ios
+node build-www.js            # populates www/
+npx cap add ios              # generates ios/ folder with Xcode project
+```
+
+The `ios/` directory is gitignored on purpose — same pattern as `android/`. The shape is `ios/App/App.xcworkspace` (open this in Xcode, **not the .xcodeproj**, because of CocoaPods).
+
+### Required Info.plist permissions
+
+After `npx cap add ios`, edit `ios/App/App/Info.plist` and add these keys (Vault needs camera for the QR scanner and Face ID for biometric unlock):
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>Vault uses the camera to scan QR codes when sending crypto.</string>
+<key>NSFaceIDUsageDescription</key>
+<string>Vault uses Face ID to unlock your wallet and authorize transactions.</string>
+```
+
+### Build
+
+```bash
+npm run sync:ios             # webpack → www → ios/App/App/public
+npm run open:ios             # opens Xcode at ios/App/App.xcworkspace
+```
+
+In Xcode:
+1. Select your iPhone (connect via cable or have it on the same Wi-Fi with developer mode enabled in Settings → Privacy & Security)
+2. Set the **Signing Team** under *Signing & Capabilities* (your free Apple ID works)
+3. Click **▶ Run**
+
+Free Apple ID = build re-signs every 7 days. Paid Apple Developer Program = lifetime + TestFlight + App Store eligibility.
+
+### Updating the live iOS web build
+
+Same as Android — `server.url` points at GitHub Pages, so pushes to `main` reach the iOS app on next launch without rebuilding the IPA.
+
+### App Store note
+
+Apple has rejected many self-custodial wallet apps under the "unregulated financial transactions" guideline. If you plan to publish to the App Store rather than sideload, expect review back-and-forth. TestFlight is a safer first audience.
+
+---
+
 ## 📂 Project structure
 
 ```
@@ -240,7 +299,8 @@ vault-wallet/
 ├── lib/                     · Pre-built Monero browser bundle + WASM
 ├── monero_web_worker.js     · Monero scan worker (must stay at root)
 ├── icons/                   · PWA icons + source SVG
-├── android/                 · Capacitor Android project (gitignored)
+├── android/                 · Capacitor Android project (gitignored, run `npx cap add android`)
+├── ios/                     · Capacitor iOS project (gitignored, run `npx cap add ios`)
 └── screenshots/             · Store screenshots for README + listings
 ```
 
