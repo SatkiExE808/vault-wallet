@@ -513,7 +513,7 @@ body {
     radial-gradient(120% 100% at 100% 100%, rgba(98,126,234,0.06), transparent 60%),
     linear-gradient(180deg, #1a1f2d, #131724);
   text-align: center;
-  padding: 12px 14px 10px;       /* tightened from 16px 14px 14px to free room for the asset list below */
+  padding: 8px 14px 8px;         /* further trimmed — was 12/14/10 — to give the asset list below more vertical room on iOS */
   border-radius: 20px;
   position: relative;
   box-shadow: 0 6px 22px -8px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
@@ -535,29 +535,30 @@ body {
 .balance-card .coin-badge {
   display: inline-flex; align-items: center; gap: 6px;
   background: var(--surface2); border-radius: 100px;
-  padding: 3px 10px; margin-bottom: 6px;
+  padding: 2px 10px; margin-bottom: 4px;
   font-size: 11px; font-weight: 600;
 }
 .balance-card .amount {
-  font-size: 22px; font-weight: 800;        /* was 26 — frees vertical space at top */
-  letter-spacing: -0.5px;
+  font-size: 20px; font-weight: 800;
+  letter-spacing: -0.4px;
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+  line-height: 1.05;
 }
 .balance-card .amount-usd {
-  font-size: 12px; color: var(--text2); margin-top: 1px;
+  font-size: 12px; color: var(--text2); margin-top: 0;
+  min-height: 0 !important;        /* the inline 18px reservation pushed content down */
 }
 /* QR shown inside balance card — compact size to fit one screen */
 .balance-card .qr-container {
-  margin: 10px 0 8px;             /* was 14/12 — tighter top section overall */
+  margin: 8px 0 6px;               /* further trimmed */
 }
 .balance-card #qr-output canvas,
 .balance-card #qr-output img,
 .balance-card #qr-canvas,
 .balance-card #wd-qr canvas,
 .balance-card #wd-qr img {
-  width: 120px !important;           /* was 140 — smaller QR shrinks the top section, gives the crypto list below more breathing room */
-  height: 120px !important;
+  width: 100px !important;           /* 100×100 — small enough that any phone camera at arm's length can still scan, big enough to read */
+  height: 100px !important;
   display: block;
   background: transparent;
   padding: 0;
@@ -573,7 +574,7 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
-  margin-top: 8px;          /* was 10 — slightly tighter so the list below gets more height */
+  margin-top: 6px;
 }
 .balance-actions.has-stake { grid-template-columns: 1fr 1fr 1fr; }
 .balance-actions.has-earn { grid-template-columns: 1fr 1fr 1fr; }
