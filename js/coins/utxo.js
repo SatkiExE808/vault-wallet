@@ -390,11 +390,12 @@ const UTXOCrypto = (() => {
     return new Uint8Array(bits);
   }
 
-  // Derive a P2PKH address for any UTXO coin
-  async function deriveP2PKH(mnemonic, coinType, versionByte) {
+  // Derive a P2PKH address for any UTXO coin (BIP44, index defaults to 0
+  // for backward compatibility with single-address callers).
+  async function deriveP2PKH(mnemonic, coinType, versionByte, index = 0) {
     const seed = await bip39ToSeed(mnemonic);
     const hdNode = ethers.HDNodeWallet.fromSeed(seed);
-    const child = hdNode.derivePath(`m/44'/${coinType}'/0'/0/0`);
+    const child = hdNode.derivePath(`m/44'/${coinType}'/0'/0/${index}`);
     const pubkeyBytes = hexToBytes(child.publicKey);
     const hash160 = ripemd160(sha256(pubkeyBytes));
     const versioned = new Uint8Array([versionByte, ...hash160]);
@@ -402,12 +403,190 @@ const UTXOCrypto = (() => {
     return base58Encode(new Uint8Array([...versioned, ...checksum]));
   }
 
-  async function deriveP2WPKH(mnemonic, coinType, hrp) {
+  // Derive a P2WPKH (native SegWit) address — BIP84.
+  async function deriveP2WPKH(mnemonic, coinType, hrp, index = 0) {
     const seed = await bip39ToSeed(mnemonic);
-    const child = ethers.HDNodeWallet.fromSeed(seed).derivePath(`m/84'/${coinType}'/0'/0/0`);
+    const child = ethers.HDNodeWallet.fromSeed(seed).derivePath(`m/84'/${coinType}'/0'/0/${index}`);
     return p2wpkhAddress(hexToBytes(child.publicKey), hrp);
   }
 
+  // ── Multi-address derivation helpers ─────────────────────────
+  // Returns [{ index, address, privateKey, pubKey, hash160 }] for indices
+  // [0, count-1]. Used to scan multiple receive addresses and to aggregate
+  // their UTXOs when sending.
+  async function deriveP2WPKHList(mnemonic, coinType, hrp, count) {
+    const seed = await bip39ToSeed(mnemonic);
+    const hdNode = ethers.HDNodeWallet.fromSeed(seed);
+    const result = [];
+    for (let i = 0; i < count; i++) {
+      const child   = hdNode.derivePath(`m/84'/${coinType}'/0'/0/${i}`);
+      const pubKey  = hexToBytes(child.publicKey);
+      const hash160 = ripemd160(sha256(pubKey));
+      result.push({
+        index: i,
+        address: bech32Encode(hrp, 0, hash160),
+        privateKey: child.privateKey,
+        pubKey,
+        hash160,
+      });
+    }
+    return result;
+  }
+
+  async function deriveP2PKHList(mnemonic, coinType, versionByte, count) {
+    const seed = await bip39ToSeed(mnemonic);
+    const hdNode = ethers.HDNodeWallet.fromSeed(seed);
+    const result = [];
+    for (let i = 0; i < count; i++) {
+      const child  = hdNode.derivePath(`m/44'/${coinType}'/0'/0/${i}`);
+      const pubKey = hexToBytes(child.publicKey);
+      const h160   = ripemd160(sha256(pubKey));
+      const versioned = new Uint8Array([versionByte, ...h160]);
+      const checksum  = sha256(sha256(versioned)).slice(0, 4);
+      result.push({
+        index: i,
+        address: base58Encode(new Uint8Array([...versioned, ...checksum])),
+        privateKey: child.privateKey,
+        pubKey,
+        hash160: h160,
+      });
+    }
+    return result;
+  }
+
+  // ── Multi-address P2WPKH transaction builder ─────────────────
+  // Gathers UTXOs across an arbitrary list of derived P2WPKH addresses
+  // (each with its own key), greedy-picks the largest UTXOs to cover
+  // amount+fee, and signs each input with its corresponding key.
+  // Change goes back to the highest-index address (the "fresh" one).
+  async function buildAndSendP2WPKHMulti({ mnemonic, coinType, hrp, count, toAddress, amount, fetchUTXOs, getFeeRate, broadcastTx }) {
+    const addrs = await deriveP2WPKHList(mnemonic, coinType, hrp, count);
+
+    // Fetch UTXOs per address in parallel, tagging each one with its
+    // address info so we can pick the right signing key at sign-time.
+    const utxoLists = await Promise.all(addrs.map(a => fetchUTXOs(a.address).then(us => us.map(u => ({ ...u, _addrInfo: a })))));
+    const allUtxos = utxoLists.flat();
+    if (!allUtxos.length) throw new Error('No spendable UTXOs across any derived address');
+
+    const amountSat = amountToSat(amount);
+    const feeRate   = await getFeeRate();
+
+    const sorted = [...allUtxos].sort((a, b) => b.value - a.value);
+    const selected = []; let inputsSat = 0;
+    for (const u of sorted) {
+      selected.push(u); inputsSat += u.value;
+      const projectedFee = Math.ceil(feeRate * (10.5 + 68 * (selected.length + 1) + 31 * 2));
+      if (inputsSat >= amountSat + projectedFee) break;
+    }
+    const fee = Math.ceil(feeRate * (10.5 + 68 * selected.length + 31 * 2));
+    if (inputsSat < amountSat + fee)
+      throw new Error(`Insufficient balance. Need ${((amountSat + fee) / 1e8).toFixed(8)} (incl. fee ~${(fee / 1e8).toFixed(8)})`);
+    const changeSat = inputsSat - amountSat - fee;
+
+    // Send change to the highest-index address — that's our current
+    // "fresh receive" address and the one the user sees in Receive view.
+    const changeAddr = addrs[addrs.length - 1];
+    const toScript   = addressToScript(toAddress, hrp);
+    const changeScript = new Uint8Array([0x00, 0x14, ...changeAddr.hash160]);
+    const outputs = [{ value: amountSat, script: toScript }];
+    const dustThreshold = Math.max(546, feeRate * 31 * 3);
+    if (changeSat >= dustThreshold) outputs.push({ value: changeSat, script: changeScript });
+
+    // BIP143 SIGHASH_ALL — these three pre-hashes are shared across all inputs
+    const hashPrevouts = dsha256(concatBytes(...selected.map(u => concatBytes(hexToBytes(u.txid).reverse(), writeLE32(u.vout)))));
+    const hashSequence = dsha256(concatBytes(...selected.map(() => writeLE32(0xffffffff))));
+    const hashOutputs  = dsha256(concatBytes(...outputs.map(o => concatBytes(writeLE64(o.value), varint(o.script.length), o.script))));
+
+    const witnesses = [];
+    for (const utxo of selected) {
+      const a = utxo._addrInfo;
+      const signingKey = new ethers.SigningKey(a.privateKey);
+      const scriptCode = p2pkhScript(a.hash160);
+      const scriptCodeWithLen = concatBytes(varint(scriptCode.length), scriptCode);
+      const outpoint = concatBytes(hexToBytes(utxo.txid).reverse(), writeLE32(utxo.vout));
+      const preimage = concatBytes(
+        writeLE32(1), hashPrevouts, hashSequence,
+        outpoint, scriptCodeWithLen, writeLE64(utxo.value),
+        writeLE32(0xffffffff), hashOutputs, writeLE32(0), writeLE32(1)
+      );
+      const sig = signingKey.sign(dsha256(preimage));
+      const der = derEncode(sig.r.slice(2), sig.s.slice(2));
+      witnesses.push([new Uint8Array([...der, 0x01]), a.pubKey]);
+    }
+
+    // Serialize segwit transaction (version + marker/flag + inputs + outputs + witnesses + locktime)
+    const parts = [writeLE32(1), new Uint8Array([0x00, 0x01])];
+    parts.push(varint(selected.length));
+    for (const u of selected) {
+      parts.push(hexToBytes(u.txid).reverse(), writeLE32(u.vout), varint(0), writeLE32(0xffffffff));
+    }
+    parts.push(varint(outputs.length));
+    for (const o of outputs) {
+      parts.push(writeLE64(o.value), varint(o.script.length), o.script);
+    }
+    for (const w of witnesses) {
+      parts.push(varint(w.length));
+      for (const item of w) {
+        parts.push(varint(item.length), item);
+      }
+    }
+    parts.push(writeLE32(0));
+    const rawHex = Array.from(concatBytes(...parts)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return broadcastTx(rawHex);
+  }
+
+  // ── Multi-address legacy P2PKH transaction builder ────────────
+  // Same idea as P2WPKH multi, but uses legacy scriptSig signing
+  // (no segwit witnesses). Used by Dogecoin.
+  async function buildAndSendTxMulti({ mnemonic, coinType, versionByte, bech32Prefix, count, toAddress, amount, fetchUTXOs, getFeeRate, broadcastTx }) {
+    const addrs = await deriveP2PKHList(mnemonic, coinType, versionByte, count);
+    const utxoLists = await Promise.all(addrs.map(a => fetchUTXOs(a.address).then(us => us.map(u => ({ ...u, _addrInfo: a })))));
+    const allUtxos = utxoLists.flat();
+    if (!allUtxos.length) throw new Error('No spendable UTXOs across any derived address');
+
+    const amountSat = amountToSat(amount);
+    const feeRate   = await getFeeRate();
+    const txOverhead = 10, perInput = 148, perOutput = 34;
+
+    const sorted = [...allUtxos].sort((a, b) => b.value - a.value);
+    const selected = []; let inputsSat = 0;
+    for (const u of sorted) {
+      selected.push(u); inputsSat += u.value;
+      const projectedFee = feeRate * (perInput * (selected.length + 1) + perOutput * 2 + txOverhead);
+      if (inputsSat >= amountSat + projectedFee) break;
+    }
+    const fee = feeRate * (perInput * selected.length + perOutput * 2 + txOverhead);
+    if (inputsSat < amountSat + fee)
+      throw new Error(`Insufficient balance. Need ${((amountSat + fee) / 1e8).toFixed(8)} (incl. fee ~${(fee / 1e8).toFixed(8)})`);
+    const changeSat = inputsSat - amountSat - fee;
+
+    const changeAddr   = addrs[addrs.length - 1];
+    const changeScript = p2pkhScript(changeAddr.hash160);
+    const toScript     = addressToScript(toAddress, bech32Prefix);
+    const outputs = [{ value: amountSat, script: toScript }];
+    const dustThreshold = Math.max(546, feeRate * 34 * 3);
+    if (changeSat >= dustThreshold) outputs.push({ value: changeSat, script: changeScript });
+
+    const inputs = selected.map(u => ({ txid: u.txid, vout: u.vout, scriptSig: new Uint8Array() }));
+    for (let i = 0; i < inputs.length; i++) {
+      const a = selected[i]._addrInfo;
+      const signingKey = new ethers.SigningKey(a.privateKey);
+      const fromScript = p2pkhScript(a.hash160);
+      const preimage = concatBytes(serializeTx(inputs, outputs, i, fromScript), writeLE32(1));
+      const sig = signingKey.sign(dsha256(preimage));
+      const der = derEncode(sig.r.slice(2), sig.s.slice(2));
+      const sigWithType = new Uint8Array([...der, 0x01]);
+      inputs[i].scriptSig = new Uint8Array([sigWithType.length, ...sigWithType, a.pubKey.length, ...a.pubKey]);
+    }
+
+    const rawHex = Array.from(serializeTx(inputs, outputs)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return broadcastTx(rawHex);
+  }
+
   return { hexToBytes, sha256, ripemd160, base58Encode, base58Decode, bip39ToSeed,
-           deriveP2PKH, deriveP2WPKH, buildAndSendTx, buildAndSendP2WPKH, addressToScript };
+           deriveP2PKH, deriveP2WPKH,
+           deriveP2WPKHList, deriveP2PKHList,
+           buildAndSendTx, buildAndSendP2WPKH,
+           buildAndSendP2WPKHMulti, buildAndSendTxMulti,
+           addressToScript };
 })();

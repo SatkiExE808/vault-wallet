@@ -229,6 +229,31 @@
     // Wire actions
     $('wd-copy').onclick = () => navigator.clipboard.writeText(addr).then(() => toast('Address copied'));
 
+    // "+ Generate new address" — only show for multi-address UTXO coins (BTC/LTC/DOGE).
+    // Index 0 was the original single-address default; clicking + bumps to index 1, 2, …
+    const newAddrBtn = $('wd-new-addr');
+    const addrMeta   = $('wd-addr-meta');
+    if (newAddrBtn && addrMeta) {
+      if (coin.multiAddr) {
+        const mod = coin.id === 'BTC'  ? BitcoinWallet
+                  : coin.id === 'LTC'  ? LitecoinWallet
+                  : coin.id === 'DOGE' ? DogecoinWallet : null;
+        const idx = mod?.getNextIndex?.() ?? 0;
+        newAddrBtn.style.display = '';
+        newAddrBtn.disabled = false;
+        newAddrBtn.onclick = async () => {
+          newAddrBtn.disabled = true;
+          await window.generateNewAddress?.(coin.id);
+          newAddrBtn.disabled = false;
+        };
+        addrMeta.style.display = '';
+        addrMeta.textContent = `Receive address #${idx} · m/${coin.id === 'DOGE' ? "44'" : "84'"}/${coin.id === 'BTC' ? "0'" : coin.id === 'LTC' ? "2'" : "3'"}/0'/0/${idx}`;
+      } else {
+        newAddrBtn.style.display = 'none';
+        addrMeta.style.display = 'none';
+      }
+    }
+
     // Show / hide Stake button for stakable coins (SOL, TRX)
     const stakeBtn = $('wd-stake-toggle');
     const earnBtn  = $('wd-earn-toggle');
@@ -427,7 +452,12 @@
           histDiv.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:8px 0">History not available for ${coin.name}.</p>
             ${url ? `<button class="btn btn-outline btn-sm wd-explorer-btn" data-url="${url}" style="margin-top:6px">View address on explorer ↗</button>` : ''}`;
         } else {
-          const txs = await coin.history(state.addresses[coin.id]);
+          // Multi-address coins: pass full address list so history shows
+          // txs from every derived index (BTC / LTC / DOGE).
+          const histTarget = state.addressLists[coin.id]?.length
+            ? state.addressLists[coin.id]
+            : state.addresses[coin.id];
+          const txs = await coin.history(histTarget);
           if (!txs || txs.length === 0) {
             const url = coin.explorerAddr ? coin.explorerAddr(state.addresses[coin.id]) : '';
             histDiv.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:8px 0">No transactions yet.</p>

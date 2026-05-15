@@ -133,11 +133,12 @@ const COINS = [
   {
     id: 'BTC', name: 'Bitcoin', symbol: 'BTC', category: 'Bitcoin',
     icon: `${CDN}/btc.svg`, color: '#f7931a', networkLabel: 'Native SegWit', networkClass: 'network-btc',
-    derive:  m    => BitcoinWallet.deriveAddress(m),
-    balance: addr => BitcoinWallet.getBalance(addr),
-    canSend: true, defaultEnabled: true,
+    derive:    m => BitcoinWallet.deriveAddress(m),
+    deriveAll: m => BitcoinWallet.deriveAllAddresses(m),
+    balance:   target => BitcoinWallet.getBalance(target),
+    canSend: true, defaultEnabled: true, multiAddr: true,
     send: async (m, to, amt) => BitcoinWallet.sendBTC(m, to, amt),
-    history: addr => BitcoinWallet.getHistory(addr),
+    history: target => BitcoinWallet.getHistory(target),
     explorerAddr: addr => `https://mempool.space/address/${addr}`,
   },
 
@@ -445,11 +446,12 @@ const COINS = [
   {
     id: 'LTC', name: 'Litecoin', symbol: 'LTC', category: 'Litecoin',
     icon: `${CDN}/ltc.svg`, color: '#a6a9aa', networkLabel: 'Native SegWit', networkClass: 'network-ltc',
-    derive:  m    => LitecoinWallet.deriveAddress(m),
-    balance: addr => LitecoinWallet.getBalance(addr),
-    canSend: true, defaultEnabled: false,
+    derive:    m => LitecoinWallet.deriveAddress(m),
+    deriveAll: m => LitecoinWallet.deriveAllAddresses(m),
+    balance:   target => LitecoinWallet.getBalance(target),
+    canSend: true, defaultEnabled: false, multiAddr: true,
     send: async (m, to, amt) => LitecoinWallet.sendLTC(m, to, amt),
-    history: addr => LitecoinWallet.getHistory(addr),
+    history: target => LitecoinWallet.getHistory(target),
     explorerAddr: addr => `https://litecoinspace.org/address/${addr}`,
   },
 
@@ -457,11 +459,12 @@ const COINS = [
   {
     id: 'DOGE', name: 'Dogecoin', symbol: 'DOGE', category: 'Dogecoin',
     icon: `${CDN}/doge.svg`, color: '#c2a633', networkLabel: 'Legacy', networkClass: 'network-doge',
-    derive:  m    => DogecoinWallet.deriveAddress(m),
-    balance: addr => DogecoinWallet.getBalance(addr),
-    canSend: true, defaultEnabled: false,
+    derive:    m => DogecoinWallet.deriveAddress(m),
+    deriveAll: m => DogecoinWallet.deriveAllAddresses(m),
+    balance:   target => DogecoinWallet.getBalance(target),
+    canSend: true, defaultEnabled: false, multiAddr: true,
     send: async (m, to, amt) => DogecoinWallet.sendDOGE(m, to, amt),
-    history: addr => DogecoinWallet.getHistory(addr),
+    history: target => DogecoinWallet.getHistory(target),
     explorerAddr: addr => `https://dogechain.info/address/${addr}`,
   },
 
@@ -771,6 +774,10 @@ const state = {
   // read this via window.getPassphrase() when deriving addresses or signing.
   passphrase: '',
   addresses: {},
+  // For multi-address UTXO coins (BTC / LTC / DOGE) this holds the full
+  // derived address list [index 0 .. nextIndex + GAP). Balance fetch and
+  // history fetch use this list to scan all known receive addresses.
+  addressLists: {},
   balances: {},
   extras: {},
   prices: {},
@@ -1094,12 +1101,42 @@ function showMigratePassword(mnemonic) {
   };
 }
 
+// ── Multi-address: generate a fresh receive address ───────────────
+// Bumps the per-coin nextIndex in localStorage, re-derives the active
+// + full address-list cache in state, then re-renders the wallet
+// display so the QR + address swap to the newly generated one.
+async function generateNewAddress(coinId) {
+  const coin = COINS.find(c => c.id === coinId);
+  if (!coin || !coin.deriveAll || !state.mnemonic) return;
+  const mod = coinId === 'BTC'  ? BitcoinWallet
+            : coinId === 'LTC'  ? LitecoinWallet
+            : coinId === 'DOGE' ? DogecoinWallet : null;
+  if (!mod || !mod.generateNewAddress) return;
+  mod.generateNewAddress();
+  try {
+    state.addresses[coinId]    = await coin.derive(state.mnemonic);
+    state.addressLists[coinId] = await coin.deriveAll(state.mnemonic);
+  } catch(e) { console.error('generateNewAddress derive:', e); return; }
+  // Re-render the wallet display if it's currently showing this coin
+  if (typeof renderWalletDisplay === 'function') renderWalletDisplay(coinId);
+  // Kick a balance refresh in case the new address has a (rare) prior balance
+  refreshBalances();
+  toast('New receive address generated');
+}
+window.generateNewAddress = generateNewAddress;
+
 // ── Wallet load ───────────────────────────────────────────────────────────────
 async function loadWallet() {
   // Derive addresses only for enabled coins (lazy-derive others on first enable)
   await Promise.all(getActiveCoins().map(async coin => {
     try {
       state.addresses[coin.id] = await coin.derive(state.mnemonic);
+      // Multi-address UTXO coins also expose deriveAll for scan-window
+      // address generation. Cache the result so balance/history calls
+      // don't re-derive on every refresh (PBKDF2 + HD walk is slow).
+      if (coin.deriveAll) {
+        state.addressLists[coin.id] = await coin.deriveAll(state.mnemonic);
+      }
       if (coin.extra) state.extras[coin.id] = await coin.extra(state.mnemonic);
     } catch(e) { console.error(`Derive ${coin.id}:`, e); }
   }));
@@ -1131,7 +1168,13 @@ async function refreshBalances() {
     const addr = state.addresses[coin.id];
     if (!addr) return;
     try {
-      state.balances[coin.id] = await coin.balance(addr, state.extras[coin.id]);
+      // For multi-address UTXO coins, pass the whole address list so the
+      // balance fetcher sums across every derived index. Other coins keep
+      // the single-address path.
+      const target = state.addressLists[coin.id]?.length
+        ? state.addressLists[coin.id]
+        : addr;
+      state.balances[coin.id] = await coin.balance(target, state.extras[coin.id]);
     } catch { state.balances[coin.id] = '—'; }
     updateSidebarBal(coin.id);
     if (state.active === coin.id) updateBalCard();
@@ -1435,7 +1478,12 @@ async function updateHistoryTab() {
   list.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:8px 0">Loading…</p>`;
   try {
     const addr = state.addresses[coin.id];
-    const txs  = await coin.history(addr);
+    // For multi-address coins, pass the full address list so history merges
+    // across every derived index (single-address coins get the string).
+    const target = state.addressLists[coin.id]?.length
+      ? state.addressLists[coin.id]
+      : addr;
+    const txs  = await coin.history(target);
     if (!txs || txs.length === 0) {
       const url = coin.explorerAddr ? coin.explorerAddr(addr) : '';
       list.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:12px 0">No transactions found.</p>

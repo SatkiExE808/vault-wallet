@@ -90,6 +90,10 @@
           <code id="wd-address">—</code>
           <button class="btn btn-outline btn-sm" id="wd-copy">Copy</button>
         </div>
+        <!-- "+ Generate new address" — only visible for multi-address UTXO coins
+             (BTC / LTC / DOGE). Hidden by default; renderWalletDisplay shows it. -->
+        <button class="btn btn-ghost btn-sm" id="wd-new-addr" style="display:none;margin-top:6px;width:100%;font-size:12px">+ Generate new address</button>
+        <div id="wd-addr-meta" style="font-size:11px;color:var(--text3);margin-top:4px;display:none;text-align:center"></div>
 
         <div class="balance-actions" id="wd-balance-actions">
           <button class="btn btn-primary" id="wd-send-toggle">Send</button>
