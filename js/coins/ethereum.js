@@ -29,6 +29,18 @@ const EthereumWallet = (() => {
     USDC: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
   };
 
+  // Defensive ceiling on gas price (5000 gwei is well above any historical
+  // legitimate ETH spike). A misbehaving RPC could otherwise quote an absurd
+  // gasPrice and silently burn the user's ETH on fees.
+  const MAX_GWEI = 5000;
+  function _capGasPrice(gasPriceWei) {
+    const capWei = ethers.parseUnits(String(MAX_GWEI), 'gwei');
+    if (gasPriceWei > capWei) {
+      throw new Error(`ETH gas price unreasonably high (${ethers.formatUnits(gasPriceWei,'gwei')} gwei > ${MAX_GWEI} cap). RPC may be misbehaving — refusing to sign.`);
+    }
+    return gasPriceWei;
+  }
+
   async function getETHBalance(address) {
     try {
       const hex = await rpcCall('eth_getBalance', [address, 'latest']);
@@ -47,7 +59,7 @@ const EthereumWallet = (() => {
 
   async function estimateFee(isToken = false) {
     const gasPriceHex = await rpcCall('eth_gasPrice', []);
-    const gasPrice = BigInt(gasPriceHex);
+    const gasPrice = _capGasPrice(BigInt(gasPriceHex));
     const gasLimit = isToken ? 100000n : 21000n;
     const gweiVal  = parseFloat(ethers.formatUnits(gasPrice, 'gwei'));
     const gwei     = gweiVal < 1 ? gweiVal.toFixed(3) : gweiVal < 100 ? gweiVal.toFixed(1) : gweiVal.toFixed(0);
@@ -60,9 +72,10 @@ const EthereumWallet = (() => {
       rpcCall('eth_getTransactionCount', [wallet.address, 'pending']),
       rpcCall('eth_gasPrice', []),
     ]);
+    const gasPrice = _capGasPrice(BigInt(gasPriceHex));
     const tx = ethers.Transaction.from({
       to: toAddress, value: ethers.parseEther(String(amount)),
-      nonce: parseInt(nonceHex, 16), gasPrice: BigInt(gasPriceHex),
+      nonce: parseInt(nonceHex, 16), gasPrice,
       gasLimit: 21000, chainId: 1,
     });
     return rpcCall('eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
@@ -78,10 +91,21 @@ const EthereumWallet = (() => {
       rpcCall('eth_getTransactionCount', [wallet.address, 'pending']),
       rpcCall('eth_gasPrice', []),
     ]);
+    // eth_estimateGas instead of hardcoded 100000 — some tokens
+    // (USDT with hooks, fee-on-transfer, etc.) need more gas, and
+    // hardcoding caused silent underpayment for those edge cases.
+    let gasLimit = 100000n;
+    try {
+      const est = await rpcCall('eth_estimateGas', [{
+        from: wallet.address, to: t.address, data,
+      }]);
+      gasLimit = BigInt(est) * 12n / 10n;  // 20% buffer over simulated estimate
+    } catch { /* fall back to 100k */ }
+    const gasPrice = _capGasPrice(BigInt(gasPriceHex));
     const tx = ethers.Transaction.from({
       to: t.address, data,
-      nonce: parseInt(nonceHex, 16), gasPrice: BigInt(gasPriceHex),
-      gasLimit: 100000, chainId: 1,
+      nonce: parseInt(nonceHex, 16), gasPrice,
+      gasLimit, chainId: 1,
     });
     return rpcCall('eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
   }
@@ -117,7 +141,7 @@ const EthereumWallet = (() => {
     const balHex = await rpcCall('eth_getBalance', [legacyAddr, 'latest']);
     const balWei = BigInt(balHex);
     const gasPriceHex = await rpcCall('eth_gasPrice', []);
-    const gasPrice = BigInt(gasPriceHex);
+    const gasPrice = _capGasPrice(BigInt(gasPriceHex));
     const gasLimit = 21000n;
     const gasCost = gasPrice * gasLimit;
     if (balWei <= gasCost) throw new Error('Balance too low to cover gas fee');

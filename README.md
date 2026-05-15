@@ -40,7 +40,7 @@ Most crypto wallets either ship as a heavy desktop binary (Exodus), tie you to o
 
 | 🔑 Self-Custody | 🌐 Multi-Chain | 📱 Mobile-First | 🔒 Audited Crypto |
 |---|---|---|---|
-| Seed never leaves device | 13 chains, one seed | Bottom-nav UX | AES-256-GCM + PBKDF2 (300k) |
+| Seed never leaves device | 13 chains, one seed | Bottom-nav UX | AES-256-GCM + PBKDF2 (600k) |
 | No accounts / no signup | EVM + UTXO + Solana + Monero + TRON | One screen per action | Standard BIP39 / BIP44 / SLIP-44 |
 | Biometric unlock | Standard derivation paths | Works as PWA or APK | Low-S sigs, bech32m enforced |
 | Encrypted in `localStorage` | Aave V3 deposit/withdraw | Auto-updates over the air | Web Crypto API only |
@@ -112,7 +112,7 @@ Most crypto wallets either ship as a heavy desktop binary (Exodus), tie you to o
 
 ### Key handling
 - BIP39 seed phrase encrypted with **AES-256-GCM**
-- Encryption key derived from your password via **PBKDF2-SHA256, 300,000 iterations**
+- Encryption key derived from your password via **PBKDF2-SHA256, 600,000 iterations** (legacy v1 blobs at 300k decrypt and are upgraded on next unlock)
 - Raw seed never persists — only the encrypted blob touches `localStorage`
 - **Round-trip decryption** verified before any legacy plaintext is discarded — eliminates the seed-loss class of bug
 - All key derivation runs locally using BIP39 / BIP44 / SLIP-44 (coin types 0, 2, 3, 60, 195, 501)
@@ -128,6 +128,11 @@ Most crypto wallets either ship as a heavy desktop binary (Exodus), tie you to o
 - Password is encrypted with a per-install AES-256 key
 - The biometric (native iOS Keychain / Android BiometricPrompt or WebAuthn) gates retrieval of that key
 - No biometric data ever leaves the device
+
+### Privacy trade-offs you should know
+- **Public RPCs** — every chain queries a public endpoint (blockstream.info · mempool.space · publicnode · llamarpc · etc.). They can correlate the IP making the request with the wallet address. None are user-configurable today.
+- **Monero balance** uses **MyMonero**'s light-wallet API, which receives your *view key* (it's the price of not running a full Monero node in the browser). View key reveals incoming outputs to you only — it cannot sign. Sends use a real Monero node + WASM scan, no view-key leak.
+- **Fee oracles** (mempool.space, BlockCypher) are capped in code so a compromised oracle can't make you broadcast a transaction that burns the whole UTXO on fees.
 
 ---
 

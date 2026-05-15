@@ -31,10 +31,12 @@ const DogecoinWallet = (() => {
       getFeeRate: async () => {
         // BlockCypher returns medium_fee_per_kb in sat/kB; UTXO builder expects sat/byte.
         // DOGE network minimum is 1000 sat/kB == 1 sat/byte.
+        // Capped at 5000 sat/byte (≈ DOGE 0.005/byte) as a sanity ceiling
+        // against a compromised oracle returning absurd values.
         try {
-          const d = await fetch(API).then(r => r.json());
+          const d = await fetch(API, { signal: AbortSignal.timeout(10000) }).then(r => r.json());
           const satPerKb = d.medium_fee_per_kb || 1000;
-          return Math.max(1, Math.ceil(satPerKb / 1000));
+          return Math.min(5000, Math.max(1, Math.ceil(satPerKb / 1000)));
         } catch { return 1; }
       },
       broadcastTx: async hex => {

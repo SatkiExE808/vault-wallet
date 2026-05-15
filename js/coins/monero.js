@@ -4,6 +4,17 @@ const MoneroWallet = (() => {
   const P = (1n << 255n) - 19n;
   const L = (1n << 252n) + 27742317777372353535851937790883648493n;
 
+  // Convert an XMR decimal amount string (e.g. "1.234567891234") to piconero
+  // BigInt exactly — without Number-precision loss. Monero has 12 decimals.
+  function _xmrToPiconero(amount) {
+    const s = String(amount).trim();
+    if (!/^\d+(\.\d+)?$/.test(s)) throw new Error('Invalid XMR amount');
+    const [intPart, fracPartRaw = ''] = s.split('.');
+    if (fracPartRaw.length > 12) throw new Error('XMR amount has more than 12 decimal places');
+    const fracPart = fracPartRaw.padEnd(12, '0');
+    return BigInt(intPart) * 1000000000000n + BigInt(fracPart || '0');
+  }
+
   // ── Keccak-256 (original pre-NIST, used by Monero) ───────────────────────────
   const KECCAK_RC = [
     0x0000000000000001n,0x0000000000008082n,0x800000000000808An,0x8000000080008000n,
@@ -178,7 +189,12 @@ const MoneroWallet = (() => {
 
     await wallet.sync();
 
-    const piconero = BigInt(Math.round(parseFloat(amount) * 1e12));
+    // String-based decimal → piconero conversion. The old
+    // `Math.round(parseFloat(amount) * 1e12)` lost precision above ~9 XMR
+    // because the intermediate float exceeds Number.MAX_SAFE_INTEGER.
+    // Now we parse the decimal string exactly: "1.234567891234" XMR →
+    // BigInt("1234567891234"), preserving every piconero.
+    const piconero = _xmrToPiconero(amount);
     const txs = await wallet.createTxs({ accountIndex: 0, address: toAddress, amount: piconero, relay: true });
     await wallet.close();
     return txs[0].getHash();

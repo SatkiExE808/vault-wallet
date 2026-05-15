@@ -39,6 +39,24 @@ const EVMChains = (() => {
   // We track these so callers can apply a wider safety buffer.
   const IS_ROLLUP = { ARBITRUM: true, OPTIMISM: true, BASE: true };
 
+  // Defensive ceiling on gas price (in gwei) per chain. A compromised or
+  // misbehaving RPC could otherwise quote an absurd gasPrice and burn the
+  // user's balance on fees with no warning. These caps are well above any
+  // historical legitimate spike for their respective chain.
+  const MAX_GAS_GWEI = {
+    ETH: 5000, BSC: 100, POLYGON: 3000, AVALANCHE: 1000,
+    ARBITRUM: 100, OPTIMISM: 100, BASE: 100,
+  };
+
+  function _capGasPrice(chainKey, gasPriceWei) {
+    const cap = MAX_GAS_GWEI[chainKey] || 5000;
+    const capWei = ethers.parseUnits(String(cap), 'gwei');
+    if (gasPriceWei > capWei) {
+      throw new Error(`Gas price unreasonably high (${ethers.formatUnits(gasPriceWei,'gwei')} gwei > ${cap} cap). RPC may be misbehaving — refusing to sign.`);
+    }
+    return gasPriceWei;
+  }
+
   async function rpc(chainKey, method, params) {
     const urls = RPCS[chainKey];
     let lastErr;
@@ -97,7 +115,7 @@ const EVMChains = (() => {
 
   async function estimateFee(chainKey, isToken = false) {
     const gasPriceHex = await rpc(chainKey, 'eth_gasPrice', []);
-    const gasPrice = BigInt(gasPriceHex);
+    const gasPrice = _capGasPrice(chainKey, BigInt(gasPriceHex));
     const baseGasLimit = isToken ? 100000n : 21000n;
     // On rollups, eth_gasPrice covers only L2 execution. The L1 data fee can equal or
     // exceed the L2 fee, so we use a much higher gas-equivalent for the displayed fee.
@@ -120,9 +138,10 @@ const EVMChains = (() => {
       rpc(chainKey, 'eth_getTransactionCount', [wallet.address, 'pending']),
       rpc(chainKey, 'eth_gasPrice', []),
     ]);
+    const gasPrice = _capGasPrice(chainKey, BigInt(gasPriceHex));
     const tx = ethers.Transaction.from({
       to, value: ethers.parseEther(String(amt)),
-      nonce: parseInt(nonceHex, 16), gasPrice: BigInt(gasPriceHex),
+      nonce: parseInt(nonceHex, 16), gasPrice,
       gasLimit: 21000, chainId: CHAIN_IDS[chainKey],
     });
     return rpc(chainKey, 'eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
@@ -138,10 +157,22 @@ const EVMChains = (() => {
       rpc(t.chain, 'eth_getTransactionCount', [wallet.address, 'pending']),
       rpc(t.chain, 'eth_gasPrice', []),
     ]);
+    // Estimate real gas cost instead of hardcoding 100k — some L2 token
+    // transfers (especially USDT with hooks or chains with complex
+    // approvals) need more, hardcoding made them silently underpay.
+    let gasLimit = 100000n;
+    try {
+      const est = await rpc(t.chain, 'eth_estimateGas', [{
+        from: wallet.address, to: t.addr, data,
+      }]);
+      // Add 20% buffer for safety vs simulated estimate.
+      gasLimit = BigInt(est) * 12n / 10n;
+    } catch { /* fall back to 100k */ }
+    const gasPrice = _capGasPrice(t.chain, BigInt(gasPriceHex));
     const tx = ethers.Transaction.from({
       to: t.addr, data,
-      nonce: parseInt(nonceHex, 16), gasPrice: BigInt(gasPriceHex),
-      gasLimit: 100000, chainId: CHAIN_IDS[t.chain],
+      nonce: parseInt(nonceHex, 16), gasPrice,
+      gasLimit, chainId: CHAIN_IDS[t.chain],
     });
     return rpc(t.chain, 'eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
   }

@@ -1586,8 +1586,11 @@ function validateAddress(address, coinId) {
     return null;
   }
   if (coinId === 'SOL') {
+    // Fail closed: if the Solana library hasn't loaded we can't validate,
+    // so refuse the address rather than letting a malformed pubkey
+    // through and risk a stuck/lost transaction.
+    if (typeof solanaWeb3 === 'undefined') return 'Solana library not loaded — please reload the app and try again';
     try {
-      if (typeof solanaWeb3 === 'undefined') return null; // lib not loaded yet — skip
       const pk = new solanaWeb3.PublicKey(address);
       if (!solanaWeb3.PublicKey.isOnCurve(pk.toBytes())) return 'Invalid Solana address';
       return null;

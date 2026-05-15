@@ -7,6 +7,11 @@
 // BSC). Skipping Ethereum mainnet because gas would eat the yield on
 // typical user balances.
 const AaveEarn = (() => {
+  // BIP39 passphrase ("25th word") — must match what every other coin
+  // module uses, otherwise deposits/withdrawals would derive a different
+  // EVM address than what the UI shows for the user's balance.
+  function _pp() { return (typeof window !== 'undefined' && window.getPassphrase) ? window.getPassphrase() : ''; }
+
   const POOLS = {
     POLYGON:   '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
     ARBITRUM:  '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
@@ -131,7 +136,7 @@ const AaveEarn = (() => {
     const cfg = SUPPORTED[coinId];
     if (!cfg) throw new Error('Asset not supported on Aave');
     const provider = getProvider(cfg.chain);
-    const wallet = ethers.Wallet.fromPhrase(mnemonic).connect(provider);
+    const wallet = ethers.Wallet.fromPhrase(mnemonic, _pp()).connect(provider);
     const underlying = new ethers.Contract(cfg.underlying, ERC20_ABI, wallet);
     const pool = new ethers.Contract(POOLS[cfg.chain], POOL_ABI, wallet);
     const amt = ethers.parseUnits(String(amount), cfg.dec);
@@ -156,7 +161,7 @@ const AaveEarn = (() => {
     const cfg = SUPPORTED[coinId];
     if (!cfg) throw new Error('Asset not supported on Aave');
     const provider = getProvider(cfg.chain);
-    const wallet = ethers.Wallet.fromPhrase(mnemonic).connect(provider);
+    const wallet = ethers.Wallet.fromPhrase(mnemonic, _pp()).connect(provider);
     const pool = new ethers.Contract(POOLS[cfg.chain], POOL_ABI, wallet);
     const amt = (amount == null || amount === 'max')
       ? ethers.MaxUint256

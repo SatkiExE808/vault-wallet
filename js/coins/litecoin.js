@@ -25,7 +25,12 @@ const LitecoinWallet = (() => {
         return utxos.filter(u => u.status?.confirmed === true);
       },
       getFeeRate: async () => {
-        try { const f = await fetch(`${API}/v1/fees/recommended`).then(r => r.json()); return Math.max(1, f.halfHourFee || 1); }
+        // Cap at 500 lit/byte — defensive ceiling against bad oracle data.
+        try {
+          const f = await fetch(`${API}/v1/fees/recommended`,
+            { signal: AbortSignal.timeout(10000) }).then(r => r.json());
+          return Math.min(500, Math.max(1, f.halfHourFee || 1));
+        }
         catch { return 1; }
       },
       broadcastTx: async hex => {

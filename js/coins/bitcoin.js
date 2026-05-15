@@ -27,7 +27,14 @@ const BitcoinWallet = (() => {
         return utxos.filter(u => u.status?.confirmed === true);
       },
       getFeeRate: async () => {
-        try { const f = await fetch('https://mempool.space/api/v1/fees/recommended').then(r => r.json()); return Math.max(1, f.halfHourFee || 5); }
+        // Cap at 500 sat/byte — sane upper bound even during fee spikes.
+        // Without this, a compromised oracle returning 99999 could
+        // burn the whole UTXO on fees with no recourse.
+        try {
+          const f = await fetch('https://mempool.space/api/v1/fees/recommended',
+            { signal: AbortSignal.timeout(10000) }).then(r => r.json());
+          return Math.min(500, Math.max(1, f.halfHourFee || 5));
+        }
         catch { return 5; }
       },
       broadcastTx: async hex => {
