@@ -39,9 +39,14 @@ body {
 }
 
 html, body {
+  width: 100%;
   height: 100%;
+  height: 100dvh;          /* iOS PWA: 100vh includes home-indicator strip → content gets cut off; 100dvh hugs the real visible area */
   overflow: hidden;        /* page itself never scrolls — only inner lists */
   overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;   /* prevent iOS rotation auto-zoom */
+  position: fixed;         /* locks body from rubber-band bounce in iOS standalone PWA */
+  inset: 0;
 }
 
 body {
@@ -56,7 +61,8 @@ body {
 #app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+  height: 100dvh;                                /* dynamic viewport — same iOS fix as above */
   padding-bottom: calc(54px + var(--sa-bot));   /* room for bottom nav */
   box-sizing: border-box;
 }
@@ -649,7 +655,7 @@ body {
   border-radius: 12px;
   padding: 13px 14px;
   color: var(--text);
-  font-size: 15px;
+  font-size: 16px;          /* 16px+ stops iOS Safari from auto-zooming on focus */
   outline: none;
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
   font-family: inherit;
@@ -1441,4 +1447,36 @@ body {
 @media (min-width: 768px) {
   #app { max-width: 480px; margin: 0 auto; box-shadow: 0 0 60px rgba(0,0,0,0.4); }
   #bottom-nav { left: 50%; transform: translateX(-50%); max-width: 480px; border-radius: 0; }
+}
+
+/* ── iOS PWA polish ────────────────────────────────────────────
+   These rules target Apple WebKit only via the -webkit-touch-callout
+   support query (the cleanest way to detect iOS Safari / iOS standalone
+   PWA without UA sniffing). Goals: kill 300ms tap delay, prevent
+   text-size auto-zoom on input focus, and stop iOS image long-press
+   share sheet from breaking the QR / poster long-press flow. */
+@supports (-webkit-touch-callout: none) {
+  /* Kill 300ms tap-delay on every interactive element */
+  button, .nav-item, .icon-btn, .seg-control > *, .filter-tab, a,
+  [onclick], [role="button"] {
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+
+  /* iOS Safari auto-zooms any <input>/<textarea>/<select> whose
+     font-size is < 16px on focus, leaving the layout zoomed even after
+     blur. Bump everything to 16px on iOS only (visual style is preserved
+     for non-iOS via the rules above, where the address textarea stays
+     12.5px monospace by design). */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+
+  /* Disable image long-press save / iOS context menu on the QR canvas
+     and asset posters so a long touch doesn't pop the share sheet. */
+  canvas, img.poster, .qr-wrap canvas {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }
