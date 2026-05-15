@@ -1,63 +1,137 @@
-# Vault — Self-Custodial Crypto Wallet
+<div align="center">
 
-A mobile-first multi-chain wallet that runs entirely on your device. No server, no account, no third party. Your keys never leave your phone.
+# 🔐 Vault
 
-**Live PWA:** https://satkiexe808.github.io/vault-wallet/
-**Android APK:** [Download latest release](https://github.com/SatkiExE808/vault-wallet/releases/latest)
+### *Self-custodial, multi-chain, runs entirely on your phone.*
 
-## Screenshots
+No server. No account. No third party. Your keys never leave your device.
 
-| Setup | Home | Coin Detail |
-|---|---|---|
-| ![Setup](screenshots/01-setup.png) | ![Home](screenshots/02-home.png) | ![Coin Detail](screenshots/03-coin-detail.png) |
+<br>
 
-## Supported Assets
+[![PWA](https://img.shields.io/badge/PWA-Live-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)](https://satkiexe808.github.io/vault-wallet/)
+[![Android APK](https://img.shields.io/badge/Android-APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/SatkiExE808/vault-wallet/releases/latest)
+[![Capacitor](https://img.shields.io/badge/Capacitor-8.3-119EFF?style=for-the-badge&logo=capacitor&logoColor=white)](https://capacitorjs.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
+[![Self-Custodial](https://img.shields.io/badge/Custody-Yours-orange?style=for-the-badge)](#-security)
 
-| Chain | Native | Tokens |
-|---|---|---|
-| Bitcoin | BTC (Native SegWit, `bc1q…`) | — |
-| Ethereum | ETH | USDT, USDC, DAI |
-| BNB Chain | BNB | USDT, USDC |
-| Polygon | POL | USDT, USDC |
-| Avalanche | AVAX | USDT, USDC |
-| Arbitrum | ARB, ETH | USDT, USDC |
-| Optimism | OP, ETH | USDT, USDC |
-| Base | ETH | USDT, USDC |
-| TRON | TRX | USDT (TRC-20) |
-| Solana | SOL | — |
-| Monero | XMR | — |
-| Litecoin | LTC (Native SegWit, `ltc1q…`) | — |
-| Dogecoin | DOGE | — |
+<br>
 
-## Features
+**🌐 Live PWA:** https://satkiexe808.github.io/vault-wallet/&nbsp;&nbsp;·&nbsp;&nbsp;**📱 Android APK:** [Latest release →](https://github.com/SatkiExE808/vault-wallet/releases/latest)
 
-- **Mobile-first UI** — bottom nav (Home / Wallets / Settings), one screen per tab
-- **Wallets tab** — pick any coin to display its QR + address; send and view history inline without navigating away
-- **Home tab** — total USD balance + asset list grouped by network; reorder networks via Edit mode
-- **Receive** — QR code + copyable address per coin
-- **Send** — inline send form with auto gas-fee estimation (incl. L2 rollup data fee)
-- **History** — recent transactions with one-tap link to the network explorer (Etherscan, Tronscan, mempool.space, etc.)
-- **Biometric unlock** — Face ID / fingerprint via native Capacitor plugin (Android/iOS) or WebAuthn (browser PWA)
-- **Auth on send** — every transaction is gated by biometric or password
-- **Recovery phrase reveal** — password-gated display of the 12 words for backup
-- **Change password** — re-encrypts the seed in place; biometric is reset (re-enable required)
-- **Manage assets** — toggle individual networks/tokens on or off
-- **PWA + Android APK** — installable from browser or sideload the signed APK
-- **Auto-updates** — APK loads from GitHub Pages, so pushes propagate without reinstall
+</div>
 
-## Security
+---
 
-- Seed phrase encrypted with **AES-256-GCM**, key derived from your password via **PBKDF2-SHA256** (300,000 iterations)
-- Raw seed never persisted — only the encrypted blob lives in `localStorage`
-- Round-trip decryption verified before any legacy plaintext is discarded (no possible seed loss)
-- Biometric path: password is encrypted with a per-install AES-256 key; the biometric (native iOS Keychain / Android BiometricPrompt or WebAuthn) is the gate to retrieving it
-- All key derivation runs locally using BIP39 / BIP44 / SLIP-44 (coin types 0/2/3/60/195/501)
-- EVM chains use the standard MetaMask path (`m/44'/60'/0'/0/0`)
-- BTC / LTC use BIP84 native SegWit (`m/84'/0'/0'/0/0`)
-- Bech32m enforced per BIP350 (Taproot/`bc1p` accepted with correct checksum, v0 still uses bech32)
-- Low-S signature normalization on UTXO chains (no malleability)
+## 🖼️ Screenshots
 
-## Run in Browser
+<table>
+<tr>
+<td align="center" width="33%"><img src="screenshots/01-setup.png" alt="Setup" /><br><sub><b>Setup</b> · BIP39 seed creation / restore</sub></td>
+<td align="center" width="33%"><img src="screenshots/02-home.png" alt="Home" /><br><sub><b>Home</b> · USD balance + asset list</sub></td>
+<td align="center" width="33%"><img src="screenshots/03-coin-detail.png" alt="Coin Detail" /><br><sub><b>Coin Detail</b> · QR · send · history</sub></td>
+</tr>
+</table>
+
+---
+
+## ✨ Why Vault?
+
+Most crypto wallets either ship as a heavy desktop binary (Exodus), tie you to one ecosystem (MetaMask is EVM-only, Phantom is Solana-only), or live in a browser extension you can't audit on mobile. **Vault is a single Capacitor PWA** that derives every chain from one BIP39 seed, runs every crypto operation locally in the browser (or via WASM for Monero), and works identically whether you sideload the APK or pin the PWA to your home screen.
+
+| 🔑 Self-Custody | 🌐 Multi-Chain | 📱 Mobile-First | 🔒 Audited Crypto |
+|---|---|---|---|
+| Seed never leaves device | 13 chains, one seed | Bottom-nav UX | AES-256-GCM + PBKDF2 (300k) |
+| No accounts / no signup | EVM + UTXO + Solana + Monero + TRON | One screen per action | Standard BIP39 / BIP44 / SLIP-44 |
+| Biometric unlock | Standard derivation paths | Works as PWA or APK | Low-S sigs, bech32m enforced |
+| Encrypted in `localStorage` | Aave V3 deposit/withdraw | Auto-updates over the air | Web Crypto API only |
+
+---
+
+## 🪙 Supported assets
+
+| Chain | Native | Tokens | Derivation path |
+|---|---|---|---|
+| 🟧 Bitcoin | BTC (Native SegWit `bc1q…`) | — | `m/84'/0'/0'/0/0` |
+| 🟪 Ethereum | ETH | USDT · USDC · DAI | `m/44'/60'/0'/0/0` |
+| 🟨 BNB Chain | BNB | USDT · USDC | `m/44'/60'/0'/0/0` |
+| 🟣 Polygon | POL | USDT · USDC | `m/44'/60'/0'/0/0` |
+| 🔺 Avalanche | AVAX | USDT · USDC | `m/44'/60'/0'/0/0` |
+| 🔵 Arbitrum | ARB · ETH | USDT · USDC | `m/44'/60'/0'/0/0` |
+| 🔴 Optimism | OP · ETH | USDT · USDC | `m/44'/60'/0'/0/0` |
+| 🔷 Base | ETH | USDT · USDC | `m/44'/60'/0'/0/0` |
+| 🟥 TRON | TRX | USDT (TRC-20) | `m/44'/195'/0'/0/0` |
+| 🟢 Solana | SOL | — | `m/44'/501'/0'/0'` |
+| 🟠 Monero | XMR | — | derived from BIP39 |
+| ⬛ Litecoin | LTC (Native SegWit `ltc1q…`) | — | `m/84'/2'/0'/0/0` |
+| 🐕 Dogecoin | DOGE | — | `m/44'/3'/0'/0/0` |
+
+---
+
+## 🚀 Features
+
+### 📱 Mobile-first UX
+- Bottom nav: **Home** / **Wallets** / **Settings** — one screen per tab, no nested menus
+- Pull-to-refresh balances
+- Camera **QR scanner** for paste-free address entry
+
+### 🏠 Home tab
+- Total USD balance + asset list grouped by network
+- **Edit mode** to reorder networks
+- Hide / show individual tokens or chains
+
+### 💸 Send & receive
+- One-tap **QR receive** for any coin
+- Inline **send form** — never leaves the coin detail page
+- Auto gas-fee estimation (including L2 rollup data-fee component)
+- **Auth-on-send** — every signature gated by biometric or password
+
+### 🔓 Authentication
+- **Face ID / fingerprint** unlock via native Capacitor BiometricAuth (Android / iOS) or WebAuthn (browser PWA)
+- Per-install AES-256 envelope for the password — biometric is the gate, not the key itself
+- **Recovery phrase reveal** — password-gated 12-word display
+- **Change password** — re-encrypts the seed in place with round-trip verification (no possible data loss)
+
+### 📜 History
+- Recent transactions per chain
+- One-tap link to the network's block explorer (Etherscan / Tronscan / mempool.space / etc.)
+
+### 🌾 DeFi (Aave V3)
+- Deposit / withdraw USDC, USDT, DAI on Polygon · Arbitrum · Optimism · Avalanche · Base · BSC
+- Live APY readout
+
+### 📲 Distribution
+- **Installable PWA** — `Add to Home Screen` from any modern browser
+- **Signed Android APK** in [Releases](https://github.com/SatkiExE808/vault-wallet/releases/latest)
+- **Auto-updates** — APK `server.url` points at GitHub Pages, so pushing to `main` propagates HTML/CSS/JS without an APK reinstall
+
+---
+
+## 🔒 Security
+
+> ⚠️ **Use at your own risk.** This wallet is not professionally audited. Test with small amounts first.
+
+### Key handling
+- BIP39 seed phrase encrypted with **AES-256-GCM**
+- Encryption key derived from your password via **PBKDF2-SHA256, 300,000 iterations**
+- Raw seed never persists — only the encrypted blob touches `localStorage`
+- **Round-trip decryption** verified before any legacy plaintext is discarded — eliminates the seed-loss class of bug
+- All key derivation runs locally using BIP39 / BIP44 / SLIP-44 (coin types 0, 2, 3, 60, 195, 501)
+
+### Signing
+- **EVM**: standard `secp256k1` ECDSA, MetaMask-compatible derivation
+- **UTXO** (BTC / LTC / DOGE): **low-S signature normalization** to prevent transaction-malleability attacks
+- **Bech32m** enforced per BIP350 — Taproot (`bc1p…`) addresses with correct checksum accepted, segwit v0 still uses bech32
+- **Solana**: ed25519 via `tweetnacl`
+- **Monero**: stagenet/mainnet via the [`monero-javascript`](https://github.com/woodser/monero-javascript) WASM bundle
+
+### Biometric path
+- Password is encrypted with a per-install AES-256 key
+- The biometric (native iOS Keychain / Android BiometricPrompt or WebAuthn) gates retrieval of that key
+- No biometric data ever leaves the device
+
+---
+
+## ⚡ Run in browser
 
 The wallet uses the Web Crypto API (`crypto.subtle`), which requires a **secure context** (HTTPS or `localhost`):
 
@@ -69,102 +143,129 @@ python3 -m http.server 8080
 npx serve .
 ```
 
-Then open `http://localhost:8080` in your browser. To install as a PWA, use the browser's "Add to Home Screen" option.
+Open `http://localhost:8080`. Use the browser's *Add to Home Screen* to install as a PWA.
 
-## Build Android APK
+---
 
-### Prerequisites
+## 🤖 Build Android APK
+
+<details><summary><b>Prerequisites</b></summary>
+
 - [Node.js](https://nodejs.org) v18+
 - [Android Studio](https://developer.android.com/studio) with Android SDK + bundled JDK
+</details>
 
-### Build a debug APK
+### Debug build
 
 ```bash
 npm install
 node build-www.js
 npx cap sync android
-cd android
-./gradlew assembleDebug
+cd android && ./gradlew assembleDebug
 ```
 
-Output: `android/app/build/outputs/apk/debug/app-debug.apk`
+→ `android/app/build/outputs/apk/debug/app-debug.apk`
 
-### Build a signed release APK
+### Signed release build
 
-1. Generate a keystore (one-time):
-   ```bash
-   keytool -genkey -v \
-     -keystore android/vault-release.keystore \
-     -storetype PKCS12 \
-     -keyalg RSA -keysize 2048 -validity 10000 \
-     -alias vault
-   ```
+<details><summary><b>1. Generate a keystore (one-time)</b></summary>
 
-2. Create `android/keystore.properties` (not committed):
-   ```
-   storeFile=vault-release.keystore
-   storePassword=<your password>
-   keyAlias=vault
-   keyPassword=<your password>
-   ```
+```bash
+keytool -genkey -v \
+  -keystore android/vault-release.keystore \
+  -storetype PKCS12 \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -alias vault
+```
+</details>
 
-3. Build:
-   ```bash
-   cd android
-   ./gradlew assembleRelease
-   ```
+<details><summary><b>2. Create <code>android/keystore.properties</code> (gitignored)</b></summary>
 
-   Output: `android/app/build/outputs/apk/release/app-release.apk`
+```properties
+storeFile=vault-release.keystore
+storePassword=<your password>
+keyAlias=vault
+keyPassword=<your password>
+```
+</details>
 
-> Keep `vault-release.keystore` and the password backed up safely — you cannot push signature-matching updates without them.
+<details><summary><b>3. Build</b></summary>
+
+```bash
+cd android
+./gradlew assembleRelease
+```
+
+→ `android/app/build/outputs/apk/release/app-release.apk`
+</details>
+
+> 🔑 **Keep `vault-release.keystore` and its password backed up safely** — without them you can never push signature-matching updates.
 
 ### Updating the live web build
 
-The APK has `server.url` set to the GitHub Pages URL, so changes pushed to `main` reach the app on next launch — no APK rebuild required for HTML/CSS/JS updates.
+The APK has `server.url` pointing at the GitHub Pages URL, so pushes to `main` reach the installed app on next launch — no APK rebuild needed for HTML/CSS/JS updates.
 
-## Project Structure
+---
+
+## 📂 Project structure
 
 ```
 vault-wallet/
-├── index.html               # Main app shell
-├── manifest.json            # PWA manifest
-├── sw.js                    # Service worker (network-first)
-├── capacitor.config.json    # Capacitor / Android config
-├── build-www.js             # Copies app files → www/
+├── index.html               · App shell
+├── manifest.json            · PWA manifest
+├── sw.js                    · Service worker (network-first)
+├── capacitor.config.json    · Capacitor / Android config
+├── build-www.js             · Copies app files → www/
 ├── css/style.css
 ├── js/
-│   ├── app.js               # Main logic, coin registry, send/receive flow
-│   ├── home.js              # Home / Wallets view rendering, view routing
-│   ├── settings.js          # Settings menu, biometric, password change
-│   ├── tx-progress.js       # Send-tx progress UI
-│   ├── qr-scanner.js        # Camera-based address scanning
+│   ├── app.js               · Main logic, coin registry, send/receive flow
+│   ├── home.js              · Home / Wallets rendering + routing
+│   ├── settings.js          · Settings menu, biometric, password change
+│   ├── tx-progress.js       · Send-tx progress UI
+│   ├── qr-scanner.js        · Camera-based address scanning
+│   ├── aave.js              · Aave V3 deposit / withdraw
 │   └── coins/
-│       ├── utxo.js          # Shared UTXO tx builder (BTC / LTC / DOGE)
+│       ├── utxo.js          · Shared UTXO tx builder (BTC / LTC / DOGE)
 │       ├── bitcoin.js / litecoin.js / dogecoin.js
-│       ├── ethereum.js      # ETH mainnet RPC + tx
-│       ├── evm-chains.js    # BSC, Polygon, AVAX, Arbitrum, Optimism, Base
-│       ├── monero.js        # WASM-based XMR wallet
-│       ├── tron.js          # TRX + TRC-20
+│       ├── ethereum.js      · ETH mainnet RPC + tx
+│       ├── evm-chains.js    · BSC · Polygon · AVAX · Arbitrum · Optimism · Base
+│       ├── monero.js        · WASM XMR wallet
+│       ├── tron.js          · TRX + TRC-20
 │       └── solana.js
-├── lib/                     # Pre-built Monero browser bundle + WASM
-├── monero_web_worker.js     # Monero scan worker (must stay at root)
-├── icons/                   # PWA icons + source
-├── android/                 # Capacitor Android project (gitignored)
-└── screenshots/
+├── lib/                     · Pre-built Monero browser bundle + WASM
+├── monero_web_worker.js     · Monero scan worker (must stay at root)
+├── icons/                   · PWA icons + source SVG
+├── android/                 · Capacitor Android project (gitignored)
+└── screenshots/             · Store screenshots for README + listings
 ```
 
-## Compatibility
+---
 
-Addresses derived here are compatible with:
-- **MetaMask, Trust Wallet, Rainbow** — all EVM chains (`m/44'/60'/0'/0/0`)
-- **TronLink** — TRX and TRC-20 (`m/44'/195'/0'/0/0`)
-- **Electrum, BlueWallet, Sparrow** — Bitcoin Native SegWit (`m/84'/0'/0'/0/0`)
-- **Litecoin Core** — Litecoin Native SegWit (`m/84'/2'/0'/0/0`)
-- **Dogecoin Core** — Dogecoin (`m/44'/3'/0'/0/0`)
-- **Phantom, Solflare** — Solana (`m/44'/501'/0'/0'`)
+## 🔄 Compatibility
 
-Monero addresses are derived from the BIP39 seed, not a Monero 25-word seed. To import into another Monero wallet, use **Show keys** on the XMR receive tab and "Restore from keys" in the destination wallet.
+Addresses derived here open cleanly in:
 
-## License
+| Wallet | Chain |
+|---|---|
+| **MetaMask · Trust Wallet · Rainbow** | All EVM chains (`m/44'/60'/0'/0/0`) |
+| **TronLink** | TRX + TRC-20 (`m/44'/195'/0'/0/0`) |
+| **Electrum · BlueWallet · Sparrow** | Bitcoin Native SegWit (`m/84'/0'/0'/0/0`) |
+| **Litecoin Core** | Litecoin Native SegWit (`m/84'/2'/0'/0/0`) |
+| **Dogecoin Core** | Dogecoin (`m/44'/3'/0'/0/0`) |
+| **Phantom · Solflare** | Solana (`m/44'/501'/0'/0'`) |
+
+Monero addresses are derived from the BIP39 seed, not a Monero 25-word seed. To import into another Monero wallet, use **Show keys** on the XMR receive tab → *Restore from keys* in the destination.
+
+---
+
+## 📜 License
 
 MIT — see [LICENSE](LICENSE) if present.
+
+<br>
+
+<div align="center">
+
+*Built on the principle that your keys should never live on someone else's server.*
+
+</div>
