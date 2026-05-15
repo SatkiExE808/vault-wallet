@@ -192,6 +192,71 @@
   // Wallet view: which coin is currently displayed at top
   let walletDisplayCoin = null;
 
+  // Opens an info modal that walks the user through verifying the displayed
+  // multi-address in a third-party BIP84/BIP44 wallet. Critical safety
+  // check anyone should do before sending large funds to a freshly derived
+  // address — the same standards-based derivation should produce the
+  // exact same address in Sparrow, Electrum, BlueWallet, etc.
+  function openVerifyHelp(coin, idx, addr, derivPath) {
+    if (typeof infoModal !== 'function') return;
+    // Coin-specific wallet recommendations. BTC/LTC use BIP84 → bech32
+    // SegWit; DOGE uses BIP44 legacy P2PKH (no SegWit on Doge yet).
+    const recos = {
+      BTC: [
+        { name: 'Sparrow Wallet', url: 'https://sparrowwallet.com/' },
+        { name: 'Electrum',       url: 'https://electrum.org/' },
+        { name: 'BlueWallet',     url: 'https://bluewallet.io/' },
+      ],
+      LTC: [
+        { name: 'Electrum-LTC',   url: 'https://electrum-ltc.org/' },
+        { name: 'Trust Wallet',   url: 'https://trustwallet.com/' },
+      ],
+      DOGE: [
+        { name: 'Trust Wallet',   url: 'https://trustwallet.com/' },
+        { name: 'MyDogeWallet',   url: 'https://mydoge.com/' },
+      ],
+    };
+    const list = (recos[coin.id] || [])
+      .map(r => `<li><a href="${r.url}" data-external style="color:var(--accent)">${r.name}</a></li>`)
+      .join('');
+    const safe = (s) => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+    const body = `
+      <p style="font-size:13px;color:var(--text2);margin-bottom:10px">
+        Every BIP84/BIP44 wallet that supports the same derivation standards will
+        regenerate <b>exactly the same address</b> from your 12-word seed. Use that
+        to confirm the address shown here before sending real funds.
+      </p>
+      <div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all">
+        <div style="color:var(--text2);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Derivation path</div>
+        <div style="color:var(--text)">${safe(derivPath)}</div>
+        <div style="color:var(--text2);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 4px">Address shown</div>
+        <div style="color:var(--text)">${safe(addr)}</div>
+      </div>
+      <p style="font-size:13px;color:var(--text);font-weight:600;margin-bottom:6px">Verification steps</p>
+      <ol style="font-size:12px;color:var(--text2);padding-left:20px;line-height:1.7;margin-bottom:12px">
+        <li>Install one of these on a separate device (or use watch-only mode):
+          <ul style="padding-left:18px;margin:4px 0">${list}</ul>
+        </li>
+        <li>Choose <b>Restore from seed phrase</b> and paste your 12 words.
+          ${coin.id !== 'DOGE' ? 'Pick <b>Native SegWit (BIP84)</b> if asked.' : 'Pick <b>Legacy (BIP44)</b> if asked.'}</li>
+        <li>If you use a BIP39 passphrase here, enable it there too — otherwise you'll
+          see a completely different set of addresses.</li>
+        <li>Navigate to <b>Receive → address index ${idx}</b>. It should match the
+          address shown above, character-for-character.</li>
+      </ol>
+      <p style="font-size:11px;color:var(--text3);padding:8px 10px;background:rgba(249,115,22,0.08);border-radius:6px">
+        💡 Before sending large amounts to a freshly generated address, also do a
+        round-trip test: send a tiny amount, wait for it to appear in Vault, then
+        send it back out. If both work, the address is fully functional.
+      </p>
+    `;
+    infoModal({
+      title: `Verify ${coin.symbol} address`,
+      body,
+      closeLabel: 'Got it',
+    });
+  }
+
   function renderWalletDisplay(coinId) {
     const active = (typeof getActiveCoins === 'function') ? getActiveCoins() : [];
     if (!active.length) return;
@@ -231,14 +296,19 @@
 
     // "+ Generate new address" — only show for multi-address UTXO coins (BTC/LTC/DOGE).
     // Index 0 was the original single-address default; clicking + bumps to index 1, 2, …
-    const newAddrBtn = $('wd-new-addr');
-    const addrMeta   = $('wd-addr-meta');
+    const newAddrBtn   = $('wd-new-addr');
+    const addrMeta     = $('wd-addr-meta');
+    const verifyLink   = $('wd-verify-link');
     if (newAddrBtn && addrMeta) {
       if (coin.multiAddr) {
         const mod = coin.id === 'BTC'  ? BitcoinWallet
                   : coin.id === 'LTC'  ? LitecoinWallet
                   : coin.id === 'DOGE' ? DogecoinWallet : null;
         const idx = mod?.getNextIndex?.() ?? 0;
+        const purpose = coin.id === 'DOGE' ? "44'" : "84'";
+        const coinType = coin.id === 'BTC' ? "0'" : coin.id === 'LTC' ? "2'" : "3'";
+        const derivPath = `m/${purpose}/${coinType}/0'/0/${idx}`;
+
         newAddrBtn.style.display = '';
         newAddrBtn.disabled = false;
         newAddrBtn.onclick = async () => {
@@ -247,10 +317,16 @@
           newAddrBtn.disabled = false;
         };
         addrMeta.style.display = '';
-        addrMeta.textContent = `Receive address #${idx} · m/${coin.id === 'DOGE' ? "44'" : "84'"}/${coin.id === 'BTC' ? "0'" : coin.id === 'LTC' ? "2'" : "3'"}/0'/0/${idx}`;
+        addrMeta.textContent = `Receive address #${idx} · ${derivPath}`;
+
+        if (verifyLink) {
+          verifyLink.style.display = '';
+          verifyLink.onclick = () => openVerifyHelp(coin, idx, addr, derivPath);
+        }
       } else {
         newAddrBtn.style.display = 'none';
         addrMeta.style.display = 'none';
+        if (verifyLink) verifyLink.style.display = 'none';
       }
     }
 

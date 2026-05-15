@@ -39,6 +39,34 @@ function confirmModal({ title = 'Confirm', lines = [], confirmLabel = 'Confirm',
 }
 window.confirmModal = confirmModal;
 
+// Lightweight info modal — multi-line content + single dismiss button.
+// `body` is treated as HTML (caller is responsible for escaping any
+// user-derived strings); useful for static how-to / educational content
+// where confirmModal's label/value row pattern doesn't fit.
+function infoModal({ title = 'Info', body = '', closeLabel = 'Got it' } = {}) {
+  return new Promise(resolve => {
+    const root = document.createElement('div');
+    root.className = 'modal-backdrop';
+    root.innerHTML = `<div class="modal" style="max-width:420px">
+      <h2>${escapeHtml(title)}</h2>
+      <div class="info-body">${body}</div>
+      <div class="modal-actions" style="grid-template-columns:1fr">
+        <button class="btn btn-primary" id="im-close">${escapeHtml(closeLabel)}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(root);
+    const close = () => { root.remove(); resolve(); };
+    root.querySelector('#im-close').onclick = close;
+    root.addEventListener('click', e => { if (e.target === root) close(); });
+    // Intercept any external links so they open in the OS browser via
+    // openExternal (Capacitor on Android, target=_blank in the PWA).
+    root.querySelectorAll('a[data-external]').forEach(a => {
+      a.onclick = e => { e.preventDefault(); window.openExternal?.(a.href); };
+    });
+  });
+}
+window.infoModal = infoModal;
+
 // ── Wallet encryption (AES-256-GCM, PBKDF2 key derivation) ───────────────────
 //
 // Format v1 (legacy): salt(16) | iv(12) | ciphertext, 300k PBKDF2 iterations.
