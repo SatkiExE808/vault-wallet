@@ -513,7 +513,7 @@ body {
     radial-gradient(120% 100% at 100% 100%, rgba(98,126,234,0.06), transparent 60%),
     linear-gradient(180deg, #1a1f2d, #131724);
   text-align: center;
-  padding: 16px 14px 14px;
+  padding: 12px 14px 10px;       /* tightened from 16px 14px 14px to free room for the asset list below */
   border-radius: 20px;
   position: relative;
   box-shadow: 0 6px 22px -8px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
@@ -535,29 +535,29 @@ body {
 .balance-card .coin-badge {
   display: inline-flex; align-items: center; gap: 6px;
   background: var(--surface2); border-radius: 100px;
-  padding: 4px 12px; margin-bottom: 8px;
-  font-size: 12px; font-weight: 600;
+  padding: 3px 10px; margin-bottom: 6px;
+  font-size: 11px; font-weight: 600;
 }
 .balance-card .amount {
-  font-size: 26px; font-weight: 800;
-  letter-spacing: -0.6px;
+  font-size: 22px; font-weight: 800;        /* was 26 — frees vertical space at top */
+  letter-spacing: -0.5px;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
 .balance-card .amount-usd {
-  font-size: 13px; color: var(--text2); margin-top: 2px;
+  font-size: 12px; color: var(--text2); margin-top: 1px;
 }
 /* QR shown inside balance card — compact size to fit one screen */
 .balance-card .qr-container {
-  margin: 14px 0 12px;
+  margin: 10px 0 8px;             /* was 14/12 — tighter top section overall */
 }
 .balance-card #qr-output canvas,
 .balance-card #qr-output img,
 .balance-card #qr-canvas,
 .balance-card #wd-qr canvas,
 .balance-card #wd-qr img {
-  width: 140px !important;
-  height: 140px !important;
+  width: 120px !important;           /* was 140 — smaller QR shrinks the top section, gives the crypto list below more breathing room */
+  height: 120px !important;
   display: block;
   background: transparent;
   padding: 0;
@@ -572,8 +572,8 @@ body {
 .balance-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 10px;
+  gap: 6px;
+  margin-top: 8px;          /* was 10 — slightly tighter so the list below gets more height */
 }
 .balance-actions.has-stake { grid-template-columns: 1fr 1fr 1fr; }
 .balance-actions.has-earn { grid-template-columns: 1fr 1fr 1fr; }
