@@ -130,6 +130,21 @@ body {
 }
 .topbar .icon-btn:active { transform: scale(0.92); background: var(--surface2); }
 
+/* Spinner state for the refresh button — keeps the icon size compact
+   while loading instead of expanding to fit "↻ Loading…" text. */
+.icon-btn.loading {
+  pointer-events: none;
+  opacity: 0.7;
+}
+.icon-btn.loading > * ,
+.icon-btn.loading {
+  animation: icon-spin 0.9s linear infinite;
+}
+@keyframes icon-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
 .topbar .topbar-title {
   display: flex; align-items: center; gap: 10px;
 }

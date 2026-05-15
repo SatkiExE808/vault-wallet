@@ -1762,11 +1762,19 @@ document.getElementById('copy-btn').onclick = () => {
 
 // ── Refresh ───────────────────────────────────────────────────────────────────
 document.getElementById('refresh-btn').onclick = async () => {
-  const btn = document.getElementById('refresh-btn');
-  btn.disabled = true; btn.textContent = '↻ Loading…';
-  await refreshBalances();
-  btn.disabled = false; btn.textContent = '↻ Refresh';
-  toast('Balances updated.');
+  // Spin every refresh button (home / wallet view / coin view) at once
+  // and keep the compact 36×36 icon size. Old code replaced the button
+  // content with "↻ Loading…" which overflowed the round icon button.
+  const btns = ['refresh-btn', 'wallet-refresh', 'refresh-btn-coin']
+    .map(id => document.getElementById(id))
+    .filter(Boolean);
+  btns.forEach(b => { b.disabled = true; b.classList.add('loading'); });
+  try {
+    await refreshBalances();
+    toast('Balances updated.');
+  } finally {
+    btns.forEach(b => { b.disabled = false; b.classList.remove('loading'); });
+  }
 };
 
 // ── Lock ──────────────────────────────────────────────────────────────────────
