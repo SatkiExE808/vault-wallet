@@ -43,7 +43,7 @@ window.confirmModal = confirmModal;
 // `body` is treated as HTML (caller is responsible for escaping any
 // user-derived strings); useful for static how-to / educational content
 // where confirmModal's label/value row pattern doesn't fit.
-function infoModal({ title = 'Info', body = '', closeLabel = 'Got it' } = {}) {
+function infoModal({ title = 'Info', body = '', closeLabel = 'Got it', onMount = null } = {}) {
   return new Promise(resolve => {
     const root = document.createElement('div');
     root.className = 'modal-backdrop';
@@ -63,6 +63,9 @@ function infoModal({ title = 'Info', body = '', closeLabel = 'Got it' } = {}) {
     root.querySelectorAll('a[data-external]').forEach(a => {
       a.onclick = e => { e.preventDefault(); window.openExternal?.(a.href); };
     });
+    // Caller hook: lets the opener wire up custom buttons inside the body
+    // (e.g. "Run self-test") that need DOM after the modal is mounted.
+    if (typeof onMount === 'function') onMount(root);
   });
 }
 window.infoModal = infoModal;

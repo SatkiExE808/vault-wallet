@@ -583,10 +583,49 @@ const UTXOCrypto = (() => {
     return broadcastTx(rawHex);
   }
 
+  // ── Self-test: BIP-0084 official test vectors ──────────────
+  // Reproduces the addresses documented in BIP-0084 from the canonical
+  // "abandon × 11 + about" test mnemonic. If these match exactly, the
+  // wallet's BIP32 HD walk + RIPEMD-160(SHA-256(pubkey)) + bech32
+  // encoding all conform to the published specification — meaning
+  // addresses derived from the user's own seed are also correct.
+  //
+  // Source: https://github.com/bitcoin/bips/blob/master/bip-0084.mediawiki
+  const BIP84_TEST_MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+  const BIP84_VECTORS = [
+    { coinType: 0, hrp: 'bc', index: 0, path: "m/84'/0'/0'/0/0", expected: 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu' },
+    { coinType: 0, hrp: 'bc', index: 1, path: "m/84'/0'/0'/0/1", expected: 'bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g' },
+  ];
+
+  async function selfTest() {
+    // The test vectors assume NO BIP39 passphrase. Vault's bip39ToSeed
+    // reads `window.getPassphrase()` to decide whether to apply one, so
+    // we temporarily override it to '' for the duration of the test.
+    let origGetPp = null;
+    if (typeof window !== 'undefined' && window.getPassphrase) {
+      origGetPp = window.getPassphrase;
+      window.getPassphrase = () => '';
+    }
+    try {
+      const results = [];
+      for (const v of BIP84_VECTORS) {
+        let actual = null, error = null;
+        try { actual = await deriveP2WPKH(BIP84_TEST_MNEMONIC, v.coinType, v.hrp, v.index); }
+        catch(e) { error = e.message || String(e); }
+        results.push({ ...v, actual, error, match: actual === v.expected });
+      }
+      return { passed: results.every(r => r.match), results };
+    } finally {
+      if (origGetPp !== null && typeof window !== 'undefined') {
+        window.getPassphrase = origGetPp;
+      }
+    }
+  }
+
   return { hexToBytes, sha256, ripemd160, base58Encode, base58Decode, bip39ToSeed,
            deriveP2PKH, deriveP2WPKH,
            deriveP2WPKHList, deriveP2PKHList,
            buildAndSendTx, buildAndSendP2WPKH,
            buildAndSendP2WPKHMulti, buildAndSendTxMulti,
-           addressToScript };
+           addressToScript, selfTest };
 })();

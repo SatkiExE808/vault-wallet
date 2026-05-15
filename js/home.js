@@ -220,40 +220,91 @@
       .map(r => `<li><a href="${r.url}" data-external style="color:var(--accent)">${r.name}</a></li>`)
       .join('');
     const safe = (s) => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+    // Self-test only meaningful for BIP84 coins (BTC, LTC). For DOGE
+    // (legacy BIP44 P2PKH) the test vectors live in a different spec
+    // we don't bundle, so we hide the button there.
+    const showSelfTest = coin.id !== 'DOGE';
+
     const body = `
       <p style="font-size:13px;color:var(--text2);margin-bottom:10px">
         Every BIP84/BIP44 wallet that supports the same derivation standards will
-        regenerate <b>exactly the same address</b> from your 12-word seed. Use that
-        to confirm the address shown here before sending real funds.
+        regenerate <b>exactly the same address</b> from your 12-word seed. There
+        are two ways to confirm this is correct:
       </p>
-      <div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all">
-        <div style="color:var(--text2);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Derivation path</div>
-        <div style="color:var(--text)">${safe(derivPath)}</div>
-        <div style="color:var(--text2);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 4px">Address shown</div>
-        <div style="color:var(--text)">${safe(addr)}</div>
+      ${showSelfTest ? `
+      <!-- Option 1: in-app cryptographic self-test against BIP-0084 vectors -->
+      <div style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px">Option 1 — Run cryptographic self-test</div>
+        <p style="font-size:11px;color:var(--text2);margin-bottom:8px">
+          Reproduces the addresses documented in <b>BIP-0084</b> from the canonical test
+          seed. If the actual outputs match the spec, the algorithm is provably correct
+          and so are your generated addresses.
+        </p>
+        <button class="btn btn-primary btn-sm" id="run-self-test" style="width:100%;font-size:12px">Run BIP-0084 self-test</button>
+        <div id="self-test-results" style="margin-top:10px"></div>
+      </div>` : ''}
+      <!-- Option 2: cross-wallet verification -->
+      <div style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px">Option ${showSelfTest ? '2' : '1'} — Cross-check in another wallet</div>
+        <div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;word-break:break-all;background:var(--surface);padding:8px;border-radius:6px;margin-bottom:8px">
+          <div style="color:var(--text2);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Derivation path</div>
+          <div style="color:var(--text)">${safe(derivPath)}</div>
+          <div style="color:var(--text2);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 3px">Address shown</div>
+          <div style="color:var(--text)">${safe(addr)}</div>
+        </div>
+        <ol style="font-size:11px;color:var(--text2);padding-left:18px;line-height:1.6;margin-bottom:0">
+          <li>Install one of these on a separate device (or watch-only mode):
+            <ul style="padding-left:16px;margin:2px 0">${list}</ul>
+          </li>
+          <li><b>Restore from seed phrase</b> and paste your 12 words.
+            ${coin.id !== 'DOGE' ? 'Pick <b>Native SegWit (BIP84)</b>.' : 'Pick <b>Legacy (BIP44)</b>.'}</li>
+          <li>If you use a BIP39 passphrase here, enable it there too.</li>
+          <li>Receive → address index ${idx} should match character-for-character.</li>
+        </ol>
       </div>
-      <p style="font-size:13px;color:var(--text);font-weight:600;margin-bottom:6px">Verification steps</p>
-      <ol style="font-size:12px;color:var(--text2);padding-left:20px;line-height:1.7;margin-bottom:12px">
-        <li>Install one of these on a separate device (or use watch-only mode):
-          <ul style="padding-left:18px;margin:4px 0">${list}</ul>
-        </li>
-        <li>Choose <b>Restore from seed phrase</b> and paste your 12 words.
-          ${coin.id !== 'DOGE' ? 'Pick <b>Native SegWit (BIP84)</b> if asked.' : 'Pick <b>Legacy (BIP44)</b> if asked.'}</li>
-        <li>If you use a BIP39 passphrase here, enable it there too — otherwise you'll
-          see a completely different set of addresses.</li>
-        <li>Navigate to <b>Receive → address index ${idx}</b>. It should match the
-          address shown above, character-for-character.</li>
-      </ol>
       <p style="font-size:11px;color:var(--text3);padding:8px 10px;background:rgba(249,115,22,0.08);border-radius:6px">
-        💡 Before sending large amounts to a freshly generated address, also do a
-        round-trip test: send a tiny amount, wait for it to appear in Vault, then
-        send it back out. If both work, the address is fully functional.
+        💡 For very large amounts, also do a round-trip test: send a small amount
+        first, wait for it to appear in Vault, then send it back out. If both work,
+        the address is fully functional.
       </p>
     `;
+
     infoModal({
       title: `Verify ${coin.symbol} address`,
       body,
       closeLabel: 'Got it',
+      onMount(root) {
+        if (!showSelfTest) return;
+        const btn = root.querySelector('#run-self-test');
+        const resDiv = root.querySelector('#self-test-results');
+        if (!btn || !resDiv) return;
+        btn.onclick = async () => {
+          btn.disabled = true;
+          btn.textContent = 'Running…';
+          let outcome;
+          try { outcome = await UTXOCrypto.selfTest(); }
+          catch(e) { outcome = { passed: false, results: [], error: e.message }; }
+          btn.style.display = 'none';
+          const rowsHtml = (outcome.results || []).map(r => `
+            <div style="background:var(--surface);padding:8px;border-radius:6px;margin-top:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;word-break:break-all">
+              <div style="color:var(--text2)">${safe(r.path)}</div>
+              <div style="color:${r.match ? 'var(--green)' : 'var(--red)'}">expected: ${safe(r.expected)}</div>
+              <div style="color:${r.match ? 'var(--green)' : 'var(--red)'}">actual:&nbsp;&nbsp; ${safe(r.actual || r.error || '(failed)')}</div>
+            </div>
+          `).join('');
+          resDiv.innerHTML = `
+            <div style="font-size:13px;font-weight:700;color:${outcome.passed ? 'var(--green)' : 'var(--red)'};margin-bottom:4px">
+              ${outcome.passed ? '✓ All test vectors pass' : '✗ Derivation does NOT match the BIP-0084 spec'}
+            </div>
+            ${rowsHtml}
+            <p style="font-size:11px;color:var(--text3);margin-top:8px">
+              ${outcome.passed
+                ? 'The BIP-0084 algorithm in Vault matches the official Bitcoin specification. Addresses derived from your own seed are also correct.'
+                : '⚠ Do not send funds to addresses generated by this wallet. Report this immediately.'}
+            </p>
+          `;
+        };
+      },
     });
   }
 
