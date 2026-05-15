@@ -347,19 +347,9 @@
 
     // "+ Generate new address" — only show for multi-address UTXO coins (BTC/LTC/DOGE).
     // Index 0 was the original single-address default; clicking + bumps to index 1, 2, …
-    const newAddrBtn   = $('wd-new-addr');
-    const addrMeta     = $('wd-addr-meta');
-    const verifyLink   = $('wd-verify-link');
-    if (newAddrBtn && addrMeta) {
+    const newAddrBtn = $('wd-new-addr');
+    if (newAddrBtn) {
       if (coin.multiAddr) {
-        const mod = coin.id === 'BTC'  ? BitcoinWallet
-                  : coin.id === 'LTC'  ? LitecoinWallet
-                  : coin.id === 'DOGE' ? DogecoinWallet : null;
-        const idx = mod?.getNextIndex?.() ?? 0;
-        const purpose = coin.id === 'DOGE' ? "44'" : "84'";
-        const coinType = coin.id === 'BTC' ? "0'" : coin.id === 'LTC' ? "2'" : "3'";
-        const derivPath = `m/${purpose}/${coinType}/0'/0/${idx}`;
-
         newAddrBtn.style.display = '';
         newAddrBtn.disabled = false;
         newAddrBtn.onclick = async () => {
@@ -367,17 +357,8 @@
           await window.generateNewAddress?.(coin.id);
           newAddrBtn.disabled = false;
         };
-        addrMeta.style.display = '';
-        addrMeta.textContent = `Receive address #${idx} · ${derivPath}`;
-
-        if (verifyLink) {
-          verifyLink.style.display = '';
-          verifyLink.onclick = () => openVerifyHelp(coin, idx, addr, derivPath);
-        }
       } else {
         newAddrBtn.style.display = 'none';
-        addrMeta.style.display = 'none';
-        if (verifyLink) verifyLink.style.display = 'none';
       }
     }
 
