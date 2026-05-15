@@ -407,12 +407,16 @@
         btn.classList.toggle('btn-outline', !on);
       });
     }
-    // Switching coins should also close any open inline panel and reset
-    // the highlighted button to Send — otherwise a History list from the
-    // previously-displayed coin sticks around with stale data.
-    $('wd-send-form').style.display = 'none';
-    $('wd-history-list').style.display = 'none';
-    setActiveAction(null);
+    // Switching coins should close any open inline panel and reset the
+    // highlighted button — otherwise a History list from the previous
+    // coin sticks around with stale data. But this must NOT trigger on
+    // plain balance-refresh re-renders (every 60 s), otherwise an open
+    // send form gets yanked out from under the user while they're typing.
+    if (_lastRenderedCoin !== coin.id) {
+      $('wd-send-form').style.display = 'none';
+      $('wd-history-list').style.display = 'none';
+      setActiveAction(null);
+    }
 
     // Send toggle — shows the inline send form right in the wallet view
     $('wd-send-toggle').onclick = () => {
@@ -631,14 +635,8 @@
       requestAnimationFrame(() => histDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
     };
 
-    // Only reset forms when the displayed coin actually changed — a plain
-    // balance refresh (same coin) must NOT yank an open send/history away
-    // from the user mid-edit.
-    if (_lastRenderedCoin !== coin.id) {
-      $('wd-send-form').style.display = 'none';
-      $('wd-history-list').style.display = 'none';
-      setActiveAction(null);
-    }
+    // (Form reset already handled earlier in this function — at the top
+    // of the button-wiring block, gated on coin-change.)
     _lastRenderedCoin = coin.id;
 
     // Highlight selected coin in the picker list
