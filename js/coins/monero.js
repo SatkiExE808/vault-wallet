@@ -235,6 +235,59 @@ const MoneroWallet = (() => {
     return scToBytes(sc_reduce(keccak256(scToBytes(privSpend))));
   }
 
+  // ── Subaddresses (Cake-compatible) ──────────────────────────────
+  // Standard Monero subaddress derivation. For (account=0, index=0)
+  // returns the primary address (network byte 18). For any other
+  // pair returns a subaddress (network byte 42) interoperable with
+  // Cake / Feather / Monero GUI / Wallet RPC — the per-payment
+  // receive addresses Monero uses to break linkability.
+  //
+  //   m_i = sc_reduce(keccak256("SubAddr\0" || a || varint(account) || varint(index)))
+  //   D_i = b·G + m_i·G   (subaddress public spend point)
+  //   C_i = a · D_i        (subaddress public view point)
+  //   addr = base58([42] || D_i || C_i || keccak256(prefix)[0:4])
+  function _varint(n) {
+    const out = [];
+    let v = n >>> 0;
+    while (v >= 0x80) { out.push((v & 0x7f) | 0x80); v >>>= 7; }
+    out.push(v & 0x7f);
+    return new Uint8Array(out);
+  }
+
+  async function deriveSubaddress(mnemonic, account, index) {
+    account = (account | 0) >>> 0;
+    index = (index | 0) >>> 0;
+    if (account === 0 && index === 0) return deriveAddress(mnemonic);
+
+    const seed = await bip39ToSeed(mnemonic);
+    const privSpend = sc_reduce(seed.slice(0, 32));               // b
+    const privView  = sc_reduce(keccak256(scToBytes(privSpend))); // a
+
+    // m_i = sc_reduce(keccak256("SubAddr\0" || a_le32 || varint(M) || varint(N)))
+    const tag = new TextEncoder().encode('SubAddr\0'); // 8 bytes incl null
+    const aBytes = scToBytes(privView);
+    const accVI = _varint(account);
+    const idxVI = _varint(index);
+    const buf = new Uint8Array(tag.length + 32 + accVI.length + idxVI.length);
+    let off = 0;
+    buf.set(tag, off);   off += tag.length;
+    buf.set(aBytes, off); off += 32;
+    buf.set(accVI, off);  off += accVI.length;
+    buf.set(idxVI, off);
+    const m = sc_reduce(keccak256(buf));
+
+    // D = b·G + m·G = (b + m)·G; doing it as point-add to match Monero
+    // reference exactly.
+    const B  = scalarMul(G, privSpend);
+    const mG = scalarMul(G, m);
+    const D  = pointAdd(B, mG);
+    const C  = scalarMul(D, privView);
+
+    const raw = new Uint8Array([42, ...compress(D), ...compress(C)]); // 42 = mainnet subaddress
+    const check = keccak256(raw).slice(0, 4);
+    return xmrBase58(new Uint8Array([...raw, ...check]));
+  }
+
   async function deriveViewKeyHex(mnemonic) {
     const bytes = await deriveViewKey(mnemonic);
     return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -292,5 +345,6 @@ const MoneroWallet = (() => {
     } catch { return '0.000000000'; }
   }
 
-  return { deriveAddress, deriveViewKey, deriveViewKeyHex, deriveSpendKeyHex, getBalance, sendXMR, getCurrentHeight };
+  return { deriveAddress, deriveSubaddress, deriveViewKey, deriveViewKeyHex,
+           deriveSpendKeyHex, getBalance, sendXMR, getCurrentHeight };
 })();
