@@ -296,9 +296,26 @@ const SolanaWallet = (() => {
           explorerUrl: `https://solscan.io/tx/${s.signature}`,
         });
       }
-      // RPC call succeeded — refresh cache and return the fresh list.
-      _writeHistoryCache(address, out);
-      return out;
+      // Merge with the cached classification so a stripped RPC response
+      // can't downgrade a tx from stake/liquid-stake back to plain send.
+      // Once we've seen the full logMessages/innerInstructions for a
+      // signature and classified it as a stake or jupiter action, that
+      // classification is sticky.
+      const RICH_KINDS = new Set(['stake', 'stake-withdraw', 'stake-manage', 'liquid-stake', 'liquid-unstake']);
+      const prevByHash = new Map();
+      for (const t of _readHistoryCache(address)) {
+        if (t && t.hash) prevByHash.set(t.hash, t);
+      }
+      const merged = out.map(tx => {
+        const prev = prevByHash.get(tx.hash);
+        if (prev && RICH_KINDS.has(prev.kind) && !RICH_KINDS.has(tx.kind)) {
+          // Don't lose the better classification we already had.
+          return { ...tx, kind: prev.kind };
+        }
+        return tx;
+      });
+      _writeHistoryCache(address, merged);
+      return merged;
     } catch {
       // RPC failed. Serve whatever cached history we still have.
       return _readHistoryCache(address);
