@@ -41,6 +41,13 @@ document.addEventListener('click', e => {
     case 'show-setup':           if (typeof showSetup === 'function') showSetup(); break;
     case 'select-coin':          if (typeof selectCoin === 'function') selectCoin(el.dataset.coinId); break;
     case 'copy-xmr-key':         if (typeof copyXmrKey === 'function') copyXmrKey(el.dataset.target); break;
+    case 'copy-xmr-subaddr':
+      if (el.dataset.targetAddr) {
+        navigator.clipboard.writeText(el.dataset.targetAddr).then(
+          () => (typeof toast === 'function') && toast('Subaddress copied'),
+        ).catch(() => {});
+      }
+      break;
     case 'confirm-reset-wallet': if (typeof confirmResetWallet === 'function') confirmResetWallet(); break;
   }
 });
@@ -486,6 +493,7 @@ const COINS = [
       spendKey: await MoneroWallet.deriveSpendKeyHex(m),
       viewKey:  await MoneroWallet.deriveViewKeyHex(m),
     }),
+    deriveSubaddress: (m, acc, idx) => MoneroWallet.deriveSubaddress(m, acc, idx),
     explorerAddr: addr => `https://xmrchain.net/search?value=${addr}`,
     canSend: true, defaultEnabled: true,
     send: async (mnemonic, to, amt) => {
@@ -1490,10 +1498,14 @@ function updateReceiveTab() {
       colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.H });
   }
 
-  // Remove any existing keys export section
+  // Remove any existing keys export + subaddresses section
   document.getElementById('xmr-keys-section')?.remove();
+  document.getElementById('xmr-subaddresses-section')?.remove();
 
   const coin = COINS.find(c => c.id === state.active);
+  if (coin?.id === 'XMR' && coin?.deriveSubaddress && state.mnemonic) {
+    renderXmrSubaddresses();
+  }
   if (coin?.exportKeys && state.mnemonic) {
     const section = document.createElement('div');
     section.id = 'xmr-keys-section';
@@ -1519,6 +1531,7 @@ function updateReceiveTab() {
       </div>`;
     document.getElementById('tab-receive').appendChild(section);
 
+    // (xmr-keys-toggle handler follows immediately below)
     document.getElementById('xmr-keys-toggle').onclick = async () => {
       const content = document.getElementById('xmr-keys-content');
       const btn = document.getElementById('xmr-keys-toggle');
@@ -1548,6 +1561,87 @@ function updateReceiveTab() {
 function copyXmrKey(elId) {
   const text = document.getElementById(elId)?.textContent;
   if (text) navigator.clipboard.writeText(text).then(() => toast('Key copied!'));
+}
+
+// ── XMR subaddresses (Cake-compatible per-payment receive addresses) ──
+// Persists only the list of {index} pairs in localStorage; addresses
+// are re-derived from the mnemonic on render (pure-JS, <10 ms each).
+// Primary address (index 0) is shown by the main receive view, so the
+// list starts at index 1.
+function _xmrLoadSubs() {
+  try {
+    const raw = localStorage.getItem('xmr.subaddresses');
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter(x => Number.isInteger(x?.index) && x.index > 0) : [];
+  } catch { return []; }
+}
+function _xmrSaveSubs(list) {
+  try { localStorage.setItem('xmr.subaddresses', JSON.stringify(list)); } catch {}
+}
+
+async function renderXmrSubaddresses() {
+  if (document.getElementById('xmr-subaddresses-section')) return;
+  const coin = COINS.find(c => c.id === 'XMR');
+  if (!coin?.deriveSubaddress || !state.mnemonic) return;
+
+  const section = document.createElement('div');
+  section.id = 'xmr-subaddresses-section';
+  section.style.cssText = 'margin-top:16px';
+  section.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div style="font-size:13px;font-weight:600">Receive Addresses</div>
+      <button class="btn btn-outline btn-sm" id="xmr-new-subaddr" style="padding:5px 10px;font-size:12px">+ New</button>
+    </div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:10px">
+      Fresh subaddress per payment — payers can't link them. Cake-compatible: the same subaddresses show up when you restore in Cake/Feather/GUI from your exported keys below.
+    </div>
+    <div id="xmr-subaddresses-list" style="display:flex;flex-direction:column;gap:6px"></div>`;
+  document.getElementById('tab-receive').appendChild(section);
+
+  await _renderXmrSubaddrList();
+
+  document.getElementById('xmr-new-subaddr').onclick = async () => {
+    const btn = document.getElementById('xmr-new-subaddr');
+    btn.disabled = true; btn.textContent = '…';
+    try {
+      const list = _xmrLoadSubs();
+      const maxIdx = list.reduce((m, x) => Math.max(m, x.index), 0);
+      list.push({ index: maxIdx + 1, createdAt: Date.now() });
+      _xmrSaveSubs(list);
+      await _renderXmrSubaddrList();
+      toast(`Generated subaddress #${maxIdx + 1}`);
+    } catch (e) {
+      toast('Derive failed: ' + (e.message || e));
+    } finally {
+      btn.disabled = false; btn.textContent = '+ New';
+    }
+  };
+}
+
+async function _renderXmrSubaddrList() {
+  const list = _xmrLoadSubs().sort((a, b) => a.index - b.index);
+  const container = document.getElementById('xmr-subaddresses-list');
+  if (!container) return;
+  if (list.length === 0) {
+    container.innerHTML = `<div style="font-size:12px;color:var(--text3);padding:8px 0;text-align:center">No subaddresses yet — tap "+ New" to generate one.</div>`;
+    return;
+  }
+  const coin = COINS.find(c => c.id === 'XMR');
+  const derived = await Promise.all(list.map(s =>
+    coin.deriveSubaddress(state.mnemonic, 0, s.index).catch(() => null)
+  ));
+  container.innerHTML = list.map((s, i) => {
+    const addr = derived[i] || '(derive failed)';
+    const short = addr.length > 24 ? `${addr.slice(0, 12)}…${addr.slice(-12)}` : addr;
+    return `
+      <div class="subaddr-row" style="padding:8px 10px;background:var(--surface);border-radius:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:11px;color:var(--text2)">Subaddress #${s.index}</div>
+          <button class="btn btn-outline btn-sm" data-action="copy-xmr-subaddr" data-target-addr="${escapeHtml(addr)}" style="padding:3px 8px;font-size:11px">Copy</button>
+        </div>
+        <code style="font-size:10px;color:var(--text);word-break:break-all">${escapeHtml(short)}</code>
+      </div>`;
+  }).join('');
 }
 
 function updateSendTab() {
