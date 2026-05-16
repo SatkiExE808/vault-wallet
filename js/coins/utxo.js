@@ -379,9 +379,16 @@ const UTXOCrypto = (() => {
   // gives the standard derivation, so existing wallets are unaffected.
   function _pp() { return (typeof window !== 'undefined' && window.getPassphrase) ? window.getPassphrase() : ''; }
 
-  async function bip39ToSeed(mnemonic) {
+  // bip39ToSeed reads the BIP39 passphrase from window.getPassphrase()
+  // by default. Callers that need to override (currently only the
+  // self-test, which uses standard-derivation test vectors) pass an
+  // explicit string. Pre-M-T1 the self-test monkey-patched
+  // window.getPassphrase globally for the duration of the test, which
+  // could race with a concurrent refreshBalances / Aave APY tick and
+  // derive the wrong-passphrase addresses across other modules.
+  async function bip39ToSeed(mnemonic, passphraseOverride) {
     const enc = new TextEncoder();
-    const passphrase = _pp();
+    const passphrase = passphraseOverride !== undefined ? passphraseOverride : _pp();
     const key = await crypto.subtle.importKey('raw', enc.encode(mnemonic.normalize('NFKD')), 'PBKDF2', false, ['deriveBits']);
     const bits = await crypto.subtle.deriveBits(
       { name: 'PBKDF2', salt: enc.encode(('mnemonic' + passphrase).normalize('NFKD')), iterations: 2048, hash: 'SHA-512' },
@@ -404,8 +411,10 @@ const UTXOCrypto = (() => {
   }
 
   // Derive a P2WPKH (native SegWit) address — BIP84.
-  async function deriveP2WPKH(mnemonic, coinType, hrp, index = 0) {
-    const seed = await bip39ToSeed(mnemonic);
+  // `passphraseOverride` lets the self-test request standard
+  // (no-passphrase) derivation without touching window.getPassphrase.
+  async function deriveP2WPKH(mnemonic, coinType, hrp, index = 0, passphraseOverride) {
+    const seed = await bip39ToSeed(mnemonic, passphraseOverride);
     const child = ethers.HDNodeWallet.fromSeed(seed).derivePath(`m/84'/${coinType}'/0'/0/${index}`);
     return p2wpkhAddress(hexToBytes(child.publicKey), hrp);
   }
@@ -598,28 +607,19 @@ const UTXOCrypto = (() => {
   ];
 
   async function selfTest() {
-    // The test vectors assume NO BIP39 passphrase. Vault's bip39ToSeed
-    // reads `window.getPassphrase()` to decide whether to apply one, so
-    // we temporarily override it to '' for the duration of the test.
-    let origGetPp = null;
-    if (typeof window !== 'undefined' && window.getPassphrase) {
-      origGetPp = window.getPassphrase;
-      window.getPassphrase = () => '';
+    // The test vectors assume NO BIP39 passphrase. Use the explicit
+    // passphraseOverride parameter on deriveP2WPKH instead of
+    // monkey-patching window.getPassphrase — the global override pre-fix
+    // could race a concurrent refreshBalances / Aave APY tick and
+    // derive wrong-passphrase addresses across other modules (M-T1).
+    const results = [];
+    for (const v of BIP84_VECTORS) {
+      let actual = null, error = null;
+      try { actual = await deriveP2WPKH(BIP84_TEST_MNEMONIC, v.coinType, v.hrp, v.index, ''); }
+      catch(e) { error = e.message || String(e); }
+      results.push({ ...v, actual, error, match: actual === v.expected });
     }
-    try {
-      const results = [];
-      for (const v of BIP84_VECTORS) {
-        let actual = null, error = null;
-        try { actual = await deriveP2WPKH(BIP84_TEST_MNEMONIC, v.coinType, v.hrp, v.index); }
-        catch(e) { error = e.message || String(e); }
-        results.push({ ...v, actual, error, match: actual === v.expected });
-      }
-      return { passed: results.every(r => r.match), results };
-    } finally {
-      if (origGetPp !== null && typeof window !== 'undefined') {
-        window.getPassphrase = origGetPp;
-      }
-    }
+    return { passed: results.every(r => r.match), results };
   }
 
   return { hexToBytes, sha256, ripemd160, base58Encode, base58Decode, bip39ToSeed,
