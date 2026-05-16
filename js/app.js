@@ -572,16 +572,26 @@ const COINS = [
 });
 
 // ── EVM chain config — Blockscout (free, no API key) + explorer links ─────────
+// Etherscan v2 proxy endpoints — primary is etherscan.iamhch.com (EYE-HCH
+// Hetzner), fallback is sol-rpc.iamhch.com/etherscan (layer-sg). Both
+// inject the apikey server-side and require the X-Vault-Wallet header.
+// The wallet tries primary first; on network error / non-2xx it cycles
+// to the fallback. Multi-host failover protects BSC/OP history from a
+// single-VPS outage (post-audit recommendation).
+const ETHERSCAN_PROXIES = [
+  'https://etherscan.iamhch.com/',
+  'https://sol-rpc.iamhch.com/etherscan',
+];
+
 const CHAIN_CONFIG = {
   ETH:       { blockscout: 'https://eth.blockscout.com',      explorer: 'https://etherscan.io' },
-  // Etherscan V2 unified API (free 5 req/s, 100k/day) — proxied via
-  // sol-rpc.iamhch.com/etherscan so the apikey lives server-side
-  // (H2 fix). Public chainid param routes to the right network.
-  BSC:       { etherscan:  'https://sol-rpc.iamhch.com/etherscan', chainId: 56, explorer: 'https://bscscan.com' },
+  // Etherscan v2 routing — see ETHERSCAN_PROXIES above for the chain
+  // of failover hosts. chainId is appended client-side.
+  BSC:       { etherscan:  ETHERSCAN_PROXIES, chainId: 56, explorer: 'https://bscscan.com' },
   POLYGON:   { blockscout: 'https://polygon.blockscout.com',  explorer: 'https://polygonscan.com' },
   AVALANCHE: { etherscan:  'https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan/api', explorer: 'https://snowtrace.io' },
   ARBITRUM:  { blockscout: 'https://arbitrum.blockscout.com', explorer: 'https://arbiscan.io' },
-  OPTIMISM:  { etherscan:  'https://sol-rpc.iamhch.com/etherscan', chainId: 10, explorer: 'https://optimistic.etherscan.io' },
+  OPTIMISM:  { etherscan:  ETHERSCAN_PROXIES, chainId: 10, explorer: 'https://optimistic.etherscan.io' },
   BASE:      { blockscout: 'https://base.blockscout.com',     explorer: 'https://basescan.org' },
 };
 
@@ -615,23 +625,32 @@ async function _blockscoutHistory(addr, base, explorer, tokenAddr, decimals) {
 async function _etherscanHistory(addr, apiBase, explorer, tokenAddr, decimals, chainId) {
   // Etherscan V2 takes chainid as a query param and ignores it on per-chain
   // endpoints, so passing it always is safe and lets us use the unified
-  // endpoint when needed. The apikey is injected by the sol-rpc.iamhch.com
-  // /etherscan rev-proxy (H3) so this client-side request carries no key.
+  // endpoint when needed. The apikey is injected server-side by the
+  // configured proxy (H3 + M-T5) so this client-side request carries no key.
   const params = new URLSearchParams({
     module: 'account', action: tokenAddr ? 'tokentx' : 'txlist',
     address: addr, sort: 'desc', offset: '25',
   });
   if (chainId) params.set('chainid', String(chainId));
   if (tokenAddr) params.set('contractaddress', tokenAddr);
-  // M-T5: layer-sg /etherscan proxy requires X-Vault-Wallet header.
-  // Without it the proxy returns 403, preventing 3rd parties from
-  // burning our shared apikey quota by hitting the endpoint directly.
-  const r = await fetch(`${apiBase}?${params}`, {
-    signal: AbortSignal.timeout(10000),
-    headers: { 'X-Vault-Wallet': 'vault-wallet/1' },
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const j = await r.json();
+  // Proxies require the X-Vault-Wallet header (M-T5) — without it
+  // they return 403 to prevent 3rd parties from burning our quota.
+  // apiBase can be either a single URL string or an array of URL
+  // strings to try in order (single-host outage protection).
+  const proxies = Array.isArray(apiBase) ? apiBase : [apiBase];
+  let lastErr = null, j = null;
+  for (const base of proxies) {
+    try {
+      const r = await fetch(`${base}?${params}`, {
+        signal: AbortSignal.timeout(10000),
+        headers: { 'X-Vault-Wallet': 'vault-wallet/1' },
+      });
+      if (!r.ok) { lastErr = new Error(`HTTP ${r.status}`); continue; }
+      j = await r.json();
+      break;
+    } catch (e) { lastErr = e; }
+  }
+  if (j === null) throw lastErr || new Error('All Etherscan proxies unreachable');
   if (j.status !== '1' || !Array.isArray(j.result)) {
     // Surface the actual API reason so a missing-key / rate-limit / bad-chain
     // problem is visible instead of just "No results".
