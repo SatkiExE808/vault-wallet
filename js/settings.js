@@ -203,6 +203,7 @@
                 localStorage.removeItem('biometric_enabled');
                 localStorage.removeItem('biometric_credential_id');
                 localStorage.removeItem('biometric_blob');
+                localStorage.removeItem('biometric_blob_v2');
                 // Also drop the keychain entry so a re-enable starts clean.
                 _bioKeyRemove().catch(() => {});
               }
@@ -360,11 +361,17 @@
           await _bioKeySet(rawKeyB64);
 
           // New blob layout: [12-byte IV][N-byte ciphertext]. No key.
+          // Stored under a distinct key (biometric_blob_v2) so the
+          // unlockWithBiometric migration code can tell v2 from legacy
+          // by *which key is present*, not by parsing length — fixes
+          // a corruption corner case where a transient Keychain read
+          // failure made a v2 blob look like a legacy one (M-N2).
           const blob = btoa(String.fromCharCode(...iv, ...new Uint8Array(ct)));
 
           localStorage.setItem('biometric_enabled', '1');
           localStorage.setItem('biometric_method', support.native ? 'native' : 'webauthn');
-          localStorage.setItem('biometric_blob', blob);
+          localStorage.setItem('biometric_blob_v2', blob);
+          localStorage.removeItem('biometric_blob'); // drop any stale legacy entry
           closeFirst();
           toast('✓ Biometric unlock enabled');
           renderSettingsTab();
@@ -382,7 +389,8 @@
     try {
       localStorage.removeItem('biometric_enabled');
       localStorage.removeItem('biometric_credential_id');
-      localStorage.removeItem('biometric_blob');
+      localStorage.removeItem('biometric_blob');     // legacy
+      localStorage.removeItem('biometric_blob_v2');  // post-M-N2
       localStorage.removeItem('biometric_method');
     } catch (e) { console.warn('clearBiometric:', e); }
     // Drop the keychain entry too — fire-and-forget since the user-facing
@@ -444,7 +452,14 @@
 
   // ── Unlock with biometric ──────────────────────────────────
   async function unlockWithBiometric() {
-    const blobB64 = localStorage.getItem('biometric_blob');
+    // Prefer the v2 blob (post-M-N2 — no embedded key, key lives in
+    // SecureStorage). Fall back to the legacy 'biometric_blob' for
+    // users on a build between C2 and M-N2; migrate them on this
+    // unlock and remove the legacy entry.
+    const v2Blob   = localStorage.getItem('biometric_blob_v2');
+    const oldBlob  = localStorage.getItem('biometric_blob');
+    const blobB64  = v2Blob || oldBlob;
+    const isLegacy = !v2Blob && !!oldBlob;
     if (!blobB64) throw new Error('Biometric not configured');
     const method = localStorage.getItem('biometric_method') || 'webauthn';
 
@@ -476,15 +491,14 @@
     const blobBytes = Uint8Array.from(atob(blobB64), c => c.charCodeAt(0));
     const iv = blobBytes.slice(0, 12);
 
-    // Post-C2 layout: key in SecureStorage, blob is [IV][ct].
-    // Pre-C2 (legacy) layout: blob is [IV][32-byte key][ct].
-    // Detect which we have, migrate transparently on first unlock.
-    let rawKeyB64 = await _bioKeyGet();
+    let rawKeyB64;
     let ct;
-    if (rawKeyB64) {
-      ct = blobBytes.slice(12);
-    } else if (blobBytes.length > 12 + 32) {
-      // Legacy blob — extract key, push it to SecureStorage, rewrite blob.
+    if (isLegacy) {
+      // Legacy: blob is [IV][32-byte key][ct]. Pull the key out, push
+      // it to SecureStorage, write a v2 blob (no key), delete legacy.
+      if (blobBytes.length <= 12 + 32) {
+        throw new Error('Biometric data corrupt — re-enable biometric');
+      }
       const rawKeyBytes = blobBytes.slice(12, 12 + 32);
       ct = blobBytes.slice(12 + 32);
       rawKeyB64 = btoa(String.fromCharCode(...rawKeyBytes));
@@ -493,14 +507,25 @@
         const newBlob = new Uint8Array(iv.length + ct.length);
         newBlob.set(iv, 0);
         newBlob.set(ct, iv.length);
-        localStorage.setItem('biometric_blob', btoa(String.fromCharCode(...newBlob)));
+        localStorage.setItem('biometric_blob_v2', btoa(String.fromCharCode(...newBlob)));
+        localStorage.removeItem('biometric_blob');
       } catch (e) {
         // Migration failed (keychain unavailable?) — proceed with the
         // in-memory key for this unlock and try again next time.
-        console.warn('biometric C2 migration: SecureStorage write failed', e);
+        // Critically: do NOT touch the legacy blob in this branch, so a
+        // retry can still find both halves.
+        console.warn('biometric C2→M-N2 migration: SecureStorage write failed', e);
       }
     } else {
-      throw new Error('Biometric data missing — re-enable biometric');
+      // v2 blob: key must come from SecureStorage. If the keychain read
+      // is transiently unreadable, refuse rather than risk corrupting
+      // the blob (M-N2 — pre-fix this branch would mis-treat the v2
+      // blob as legacy and overwrite SecureStorage with ciphertext bytes).
+      rawKeyB64 = await _bioKeyGet();
+      if (!rawKeyB64) {
+        throw new Error('Biometric key missing from keychain — re-enable biometric');
+      }
+      ct = blobBytes.slice(12);
     }
 
     const rawKey = Uint8Array.from(atob(rawKeyB64), c => c.charCodeAt(0));
