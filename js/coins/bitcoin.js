@@ -73,7 +73,12 @@ const BitcoinWallet = (() => {
         try {
           const f = await fetch('https://mempool.space/api/v1/fees/recommended',
             { signal: AbortSignal.timeout(10000) }).then(r => r.json());
-          return Math.min(500, Math.max(1, f.halfHourFee || 5));
+          // Coerce + sanity-clamp: a non-number from the API (string,
+          // null, undefined) used to propagate NaN through Math.ceil
+          // and crash the BigInt fee math in writeLE64 (L-T2).
+          const raw = Number(f?.halfHourFee);
+          const rate = Number.isFinite(raw) && raw > 0 ? raw : 5;
+          return Math.min(500, Math.max(1, rate));
         }
         catch { return 5; }
       },
