@@ -200,9 +200,12 @@ const EVMChains = (() => {
     });
   }
 
-  // Expose the chain lock so other EVM-touching modules (aave, future
-  // swap/stake helpers) can acquire it before broadcasting on the same
-  // chain. Without this the M5 nonce protection has a hole — see M-N3.
-  return { deriveAddress, getNative, getToken, estimateFee, sendNative, sendToken, _withChainLock };
+  // Expose the chain lock + gas cap + raw RPC helper so other
+  // EVM-touching modules (aave, future swap/stake helpers) can run
+  // their writes through the same per-chain serialization and gas
+  // ceiling. Without this the M5 nonce protection and M1 gas cap
+  // have holes — see M-N3 and H-T1.
+  return { deriveAddress, getNative, getToken, estimateFee, sendNative, sendToken,
+           _withChainLock, _capGasPrice, _rpc: rpc };
 })();
 window.EVMChains = EVMChains;

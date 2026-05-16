@@ -142,10 +142,30 @@ const AaveEarn = (() => {
     return lock ? lock(chainKey, fn) : fn();
   }
 
+  // Cap gas price using EVMChains' per-chain ceiling (M1). Without this
+  // a malicious RPC could quote 1000 gwei on BSC during a deposit and
+  // burn the user's native balance on fees (H-T1).
+  async function _cappedGasPrice(chainKey) {
+    const lock = window.EVMChains?._withChainLock;
+    const cap  = window.EVMChains?._capGasPrice;
+    const rpc  = window.EVMChains?._rpc;
+    if (!cap || !rpc) {
+      // EVMChains hasn't loaded — fall back to undefined so ethers
+      // fetches a gas price itself. Not ideal, but better than
+      // failing the deposit; the chain lock fallback in _chainLocked
+      // already handles a missing module gracefully.
+      return undefined;
+    }
+    const gasPriceHex = await rpc(chainKey, 'eth_gasPrice', []);
+    return cap(chainKey, BigInt(gasPriceHex));
+  }
+
   function supply(mnemonic, coinId, amount) {
     const cfg = SUPPORTED[coinId];
     if (!cfg) throw new Error('Asset not supported on Aave');
     return _chainLocked(cfg.chain, async () => {
+      const gasPrice = await _cappedGasPrice(cfg.chain);
+      const txOpts = gasPrice !== undefined ? { gasPrice } : {};
       const provider = getProvider(cfg.chain);
       const wallet = ethers.Wallet.fromPhrase(mnemonic, _pp()).connect(provider);
       const underlying = new ethers.Contract(cfg.underlying, ERC20_ABI, wallet);
@@ -157,13 +177,13 @@ const AaveEarn = (() => {
         // the existing allowance is non-zero — requires reset to 0 first.
         // Other ERC-20s allow direct overwrite, but resetting first is harmless.
         if (allowance > 0n) {
-          const resetTx = await underlying.approve(POOLS[cfg.chain], 0);
+          const resetTx = await underlying.approve(POOLS[cfg.chain], 0, txOpts);
           await resetTx.wait();
         }
-        const approveTx = await underlying.approve(POOLS[cfg.chain], ethers.MaxUint256);
+        const approveTx = await underlying.approve(POOLS[cfg.chain], ethers.MaxUint256, txOpts);
         await approveTx.wait();
       }
-      const tx = await pool.supply(cfg.underlying, amt, wallet.address, 0);
+      const tx = await pool.supply(cfg.underlying, amt, wallet.address, 0, txOpts);
       return tx.hash;
     });
   }
@@ -173,13 +193,15 @@ const AaveEarn = (() => {
     const cfg = SUPPORTED[coinId];
     if (!cfg) throw new Error('Asset not supported on Aave');
     return _chainLocked(cfg.chain, async () => {
+      const gasPrice = await _cappedGasPrice(cfg.chain);
+      const txOpts = gasPrice !== undefined ? { gasPrice } : {};
       const provider = getProvider(cfg.chain);
       const wallet = ethers.Wallet.fromPhrase(mnemonic, _pp()).connect(provider);
       const pool = new ethers.Contract(POOLS[cfg.chain], POOL_ABI, wallet);
       const amt = (amount == null || amount === 'max')
         ? ethers.MaxUint256
         : ethers.parseUnits(String(amount), cfg.dec);
-      const tx = await pool.withdraw(cfg.underlying, amt, wallet.address);
+      const tx = await pool.withdraw(cfg.underlying, amt, wallet.address, txOpts);
       return tx.hash;
     });
   }
