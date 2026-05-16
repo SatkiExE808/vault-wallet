@@ -9,11 +9,11 @@ const SolanaWallet = (() => {
   // strips the Origin and re-adds permissive CORS — same Solana mainnet
   // backend, just without the CORS gauntlet.
   const RPCS = [
-    // Primary: layer-sg nginx → mainnet-beta (datacenter egress)
-    'https://vault.iamhch.com/_sol/rpc',
+    // Primary: dedicated layer-sg nginx → mainnet-beta (datacenter egress)
+    'https://sol-rpc.iamhch.com/',
     // Backup: layer-sg nginx → tailscale → home server → mainnet-beta
     // (residential egress; saves us if mainnet-beta ever blocks SG IPs)
-    'https://vault.iamhch.com/_sol/rpc-home',
+    'https://sol-rpc.iamhch.com/home',
     // Last-resort direct endpoints — return 403 to browser-Origin
     // requests today but kept in case Solana's CORS policy changes.
     'https://api.mainnet-beta.solana.com',
