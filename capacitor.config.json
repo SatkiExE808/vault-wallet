@@ -16,6 +16,6 @@
     "contentInset": "never",
     "allowsLinkPreview": false,
     "scrollEnabled": false,
-    "limitsNavigationsToAppBoundDomains": false
+    "limitsNavigationsToAppBoundDomains": true
   }
 }
