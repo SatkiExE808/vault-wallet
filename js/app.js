@@ -583,13 +583,15 @@ const ETHERSCAN_PROXIES = [
 
 const CHAIN_CONFIG = {
   ETH:       { blockscout: 'https://eth.blockscout.com',      explorer: 'https://etherscan.io' },
-  // Etherscan v2 routing — see ETHERSCAN_PROXIES above. chainId is
-  // appended client-side. Array form supports failover.
-  BSC:       { etherscan:  ETHERSCAN_PROXIES, chainId: 56, explorer: 'https://bscscan.com' },
+  // BSC + OP: Etherscan v2 dropped these from free tier; Blockscout
+  // BSC is offline. Fall back to eth_getLogs via the public RPC
+  // (no API key needed). Token history works; native shows empty +
+  // the explorer link.
+  BSC:       { rpclogs: true, chainId: 56, explorer: 'https://bscscan.com' },
   POLYGON:   { blockscout: 'https://polygon.blockscout.com',  explorer: 'https://polygonscan.com' },
   AVALANCHE: { etherscan:  'https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan/api', explorer: 'https://snowtrace.io' },
   ARBITRUM:  { blockscout: 'https://arbitrum.blockscout.com', explorer: 'https://arbiscan.io' },
-  OPTIMISM:  { etherscan:  ETHERSCAN_PROXIES, chainId: 10, explorer: 'https://optimistic.etherscan.io' },
+  OPTIMISM:  { rpclogs: true, chainId: 10, explorer: 'https://optimistic.etherscan.io' },
   BASE:      { blockscout: 'https://base.blockscout.com',     explorer: 'https://basescan.org' },
 };
 
@@ -712,9 +714,84 @@ async function _blockchairHistory(addr, chain, explorer, tokenAddr, decimals) {
   return out;
 }
 
+// RPC-only history adapter using eth_getLogs. Used where no free
+// explorer API exists (BSC/OP after Etherscan v2 dropped them from
+// free tier and Blockscout BSC is offline). Token transfers come
+// back fast and complete; native (BNB / ETH on OP) returns empty
+// because raw transfers don't emit logs — the wallet's UI then
+// shows the "View on explorer" link, which is fine for personal use.
+//
+// Talks through window.EVMChains._rpc (exposed in M-N3) so calls
+// go through the same chain-key RPC fan-out as the rest of the
+// wallet — no extra endpoints to manage.
+const _TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'; // keccak("Transfer(address,address,uint256)")
+const _RPC_LOG_RANGE = 50000; // ~1.7 days on BSC (3s blocks) / ~28 hr on OP (2s)
+
+async function _rpcLogHistory(addr, chainKey, tokenAddr, decimals, explorer) {
+  if (!tokenAddr) return []; // native — see comment above
+  const rpc = window.EVMChains?._rpc;
+  if (!rpc) throw new Error('EVMChains module not loaded — refresh the app');
+
+  const tipHex = await rpc(chainKey, 'eth_blockNumber', []);
+  const tip = parseInt(tipHex, 16);
+  const fromBlock = '0x' + Math.max(0, tip - _RPC_LOG_RANGE).toString(16);
+  const toBlock = 'latest';
+
+  // Encode the user's address as a 32-byte topic (left-padded).
+  const addrTopic = '0x' + addr.toLowerCase().slice(2).padStart(64, '0');
+
+  // Two parallel queries: sent (we're the `from` indexed arg)
+  // and received (we're the `to` indexed arg).
+  const [sent, recv] = await Promise.all([
+    rpc(chainKey, 'eth_getLogs', [{ fromBlock, toBlock, address: tokenAddr,
+        topics: [_TRANSFER_TOPIC, addrTopic, null] }]),
+    rpc(chainKey, 'eth_getLogs', [{ fromBlock, toBlock, address: tokenAddr,
+        topics: [_TRANSFER_TOPIC, null, addrTopic] }]),
+  ]);
+
+  // Combine, dedupe by (txhash, logIndex), sort newest-first, cap at 25.
+  const seen = new Set();
+  const all = [...(sent || []), ...(recv || [])].filter(l => {
+    const key = `${l.transactionHash}:${l.logIndex}`;
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  }).sort((a, b) => {
+    const bn = parseInt(b.blockNumber, 16) - parseInt(a.blockNumber, 16);
+    return bn || (parseInt(b.logIndex, 16) - parseInt(a.logIndex, 16));
+  }).slice(0, 25);
+
+  if (all.length === 0) return [];
+
+  // Logs don't carry timestamps — fetch unique blocks to fill them in.
+  const uniqBlocks = [...new Set(all.map(l => l.blockNumber))];
+  const blocks = await Promise.all(uniqBlocks.map(bn =>
+    rpc(chainKey, 'eth_getBlockByNumber', [bn, false]).catch(() => null)
+  ));
+  const blockTime = {};
+  for (let i = 0; i < uniqBlocks.length; i++) {
+    blockTime[uniqBlocks[i]] = blocks[i]?.timestamp ? parseInt(blocks[i].timestamp, 16) * 1000 : null;
+  }
+
+  return all.map(log => {
+    const isSend = log.topics[1] === addrTopic;
+    const valueWei = BigInt(log.data);
+    const amount = parseFloat(ethers.formatUnits(valueWei, decimals)).toFixed(decimals <= 6 ? 2 : 4);
+    return {
+      hash: log.transactionHash,
+      type: isSend ? 'send' : 'receive',
+      amount,
+      time: blockTime[log.blockNumber],
+      confirmed: true,
+      status: 'ok',
+      explorerUrl: `${explorer}/tx/${log.transactionHash}`,
+    };
+  });
+}
+
 async function fetchEvmHistory(addr, chainKey, tokenAddr, decimals) {
   const cfg = CHAIN_CONFIG[chainKey];
   if (!cfg) return [];
+  if (cfg.rpclogs)   return _rpcLogHistory(addr, chainKey, tokenAddr, decimals, cfg.explorer);
   if (cfg.blockchair) return _blockchairHistory(addr, cfg.blockchair, cfg.explorer, tokenAddr, decimals);
   if (cfg.blockscout) return _blockscoutHistory(addr, cfg.blockscout, cfg.explorer, tokenAddr, decimals);
   return _etherscanHistory(addr, cfg.etherscan, cfg.explorer, tokenAddr, decimals, cfg.chainId);
