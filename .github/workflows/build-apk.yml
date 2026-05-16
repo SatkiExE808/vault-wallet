@@ -1,6 +1,15 @@
 # Build & sign the Android APK and attach it to a GitHub release.
 #
-# Trigger: pushing a version tag (vX.Y.Z) or a manual run.
+# Triggers:
+#   - Every push to `main`         → rebuilds APK + updates the rolling
+#                                    `latest` release (one slot, overwrites)
+#   - Version tag push (vX.Y.Z)    → builds APK + creates a permanent
+#                                    versioned release with auto-generated
+#                                    release notes
+#   - Manual run (Actions tab)     → same as a push to main
+#
+# Docs-only commits (README / docs/ / *.md / LICENSE) are skipped so we
+# don't burn CI minutes on a typo fix.
 #
 # Required repo secrets (Settings → Secrets and variables → Actions):
 #   ANDROID_KEYSTORE_BASE64    The keystore file, base64-encoded.
@@ -11,17 +20,20 @@
 #                               the keystore password — depends on how you
 #                               created it).
 #
-# To cut a release:
-#   git tag v1.0.1 && git push origin v1.0.1
-# The workflow builds the APK, signs it, and attaches vault-wallet.apk to a
-# release for that tag (creating the release if it doesn't exist yet).
+# See .github/SECRETS_SETUP.md for the one-time keystore-and-secrets setup.
 
 name: Build & release APK
 
 on:
   push:
+    branches: [main]
     tags:
       - 'v*.*.*'
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
   workflow_dispatch:  # allow manual runs from the Actions tab
 
 permissions:
@@ -131,10 +143,34 @@ jobs:
           path: vault-wallet.apk
           retention-days: 30
 
-      - name: Attach APK to release (only on tag push)
+      # Tag push (vX.Y.Z) — create a permanent versioned release
+      - name: Attach APK to versioned release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: vault-wallet.apk
           fail_on_unmatched_files: true
           generate_release_notes: true
+
+      # Push to main or manual run — overwrite the rolling `latest` release
+      # so /releases/latest always serves the newest APK.
+      - name: Update rolling `latest` release
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build (auto)
+          body: |
+            🤖 Auto-built from `main` on every push.
+
+            **Commit:** `${{ github.sha }}`
+            **Build:**  #${{ github.run_number }}
+            **Built:**  ${{ github.event.head_commit.timestamp || github.run_started_at }}
+
+            Download **`vault-wallet.apk`** below and sideload to your Android device.
+
+            ⚠️ If you have an older Vault installed signed with a **different** keystore, Android will refuse to install over it — uninstall the old one first.
+          files: vault-wallet.apk
+          fail_on_unmatched_files: true
+          prerelease: false
+          make_latest: true
