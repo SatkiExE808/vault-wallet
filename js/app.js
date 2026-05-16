@@ -623,7 +623,13 @@ async function _etherscanHistory(addr, apiBase, explorer, tokenAddr, decimals, c
   });
   if (chainId) params.set('chainid', String(chainId));
   if (tokenAddr) params.set('contractaddress', tokenAddr);
-  const r = await fetch(`${apiBase}?${params}`, { signal: AbortSignal.timeout(10000) });
+  // M-T5: layer-sg /etherscan proxy requires X-Vault-Wallet header.
+  // Without it the proxy returns 403, preventing 3rd parties from
+  // burning our shared apikey quota by hitting the endpoint directly.
+  const r = await fetch(`${apiBase}?${params}`, {
+    signal: AbortSignal.timeout(10000),
+    headers: { 'X-Vault-Wallet': 'vault-wallet/1' },
+  });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const j = await r.json();
   if (j.status !== '1' || !Array.isArray(j.result)) {
@@ -1113,9 +1119,22 @@ function showUnlock() {
         })
       : window.confirm('Remove wallet from this device? Make absolutely sure you have your recovery phrase backed up.');
     if (!ok) return;
-    localStorage.clear(); location.reload();
+    await wipeAllSecrets();
+    localStorage.clear();
+    location.reload();
   };
 }
+
+// Purge every secret persisted outside localStorage before a wipe.
+// Android Keystore in particular doesn't get cleared by
+// localStorage.clear() or even by "Clear data", so a phone handoff
+// after a wipe could otherwise leak the previous user's biometric AES
+// key or TOTP base32 secret to whoever installs the app next (H-T2).
+async function wipeAllSecrets() {
+  try { window.clearBiometric?.(); } catch {}
+  try { await window.TwoFA?.disable?.(); } catch {}
+}
+window.wipeAllSecrets = wipeAllSecrets;
 
 // BIP39 passphrase prompt shown after a successful password unlock when the
 // user has opted in to passphrase protection. Wrong passphrase = different
@@ -1410,13 +1429,20 @@ function updateReceiveTab() {
       const content = document.getElementById('xmr-keys-content');
       const btn = document.getElementById('xmr-keys-toggle');
       if (content.style.display === 'none') {
-        content.style.display = 'block';
-        btn.textContent = 'Hide keys';
+        // Gate on biometric/password (+ 2FA if configured) before
+        // exposing the spend key — a shoulder-surfer with an unlocked
+        // phone could otherwise copy the spend key and drain XMR from
+        // a separately-restored wallet (M-T4).
         if (document.getElementById('xmr-spend-key').textContent === 'Loading…') {
+          try {
+            if (typeof verifyAuth === 'function') await verifyAuth('Show Monero private keys');
+          } catch { return; }
           const keys = await coin.exportKeys(state.mnemonic);
           document.getElementById('xmr-spend-key').textContent = keys.spendKey;
           document.getElementById('xmr-view-key').textContent  = keys.viewKey;
         }
+        content.style.display = 'block';
+        btn.textContent = 'Hide keys';
       } else {
         content.style.display = 'none';
         btn.textContent = 'Show keys for other Monero wallets';
@@ -1722,6 +1748,11 @@ function validateAddress(address, coinId) {
     // addresses (4...) carrying an embedded 8-byte payment ID are 106 chars.
     if (!address.startsWith('4') && !address.startsWith('8')) return 'Invalid Monero address';
     if (address.length !== 95 && address.length !== 106) return 'Invalid Monero address (wrong length)';
+    // L-T5: reject anything with characters outside Monero's base58
+    // alphabet ([1-9A-HJ-NP-Za-km-z], same as Bitcoin's — excludes
+    // 0, O, I, l). Full keccak checksum is verified by the wasm later;
+    // this catches paste-typos before the user authorizes the send.
+    if (!/^[1-9A-HJ-NP-Za-km-z]+$/.test(address)) return 'Invalid Monero address (bad characters)';
     return null;
   }
   if (coinId === 'SOL') {
@@ -2029,7 +2060,9 @@ async function confirmResetWallet() {
       })
     : window.confirm('Permanently remove this wallet from the device? Make absolutely sure your recovery phrase is backed up.');
   if (!ok) return;
-  localStorage.clear(); location.reload();
+  await wipeAllSecrets();
+  localStorage.clear();
+  location.reload();
 }
 
 async function loadLegacyRecovery() {

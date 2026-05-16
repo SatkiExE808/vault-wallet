@@ -553,6 +553,13 @@
   }
   window.unlockWithBiometric = unlockWithBiometric;
   window.biometricEnabled = () => localStorage.getItem('biometric_enabled') === '1';
+  // Exposed for the "Remove Wallet" / "Reset Wallet" wipe paths so they
+  // can purge the native Keychain / Keystore entry before
+  // localStorage.clear() — Android Keystore in particular survives
+  // localStorage.clear() and even survives "Clear data", so a phone
+  // handoff after wipe would leak the previous user's biometric AES key
+  // and TOTP base32 secret to whoever installs the app next (H-T2).
+  window.clearBiometric = clearBiometric;
 
   // ── Manage assets (uses existing app.js renderSettingsList) ─
   function showManageAssets() {
@@ -743,13 +750,18 @@
   }
 
   // ── Two-Factor (TOTP) setup ────────────────────────────────
-  function show2FAFlow() {
+  async function show2FAFlow() {
     // Hard-fail if the TOTP module didn't load — better than a silent
     // 'nothing happens when I tap' UX, which is what the user reported.
     if (!window.TwoFA) {
       toast('Two-factor module failed to load — refresh the app');
       return;
     }
+    // Await the async secret load — a fast tap into Settings → 2FA at
+    // cold start would otherwise see isEnabled()==false and walk the
+    // user through enabling 2FA again, overwriting the existing TOTP
+    // secret in SecureStorage (M-T2 — same race class as H-N1).
+    try { await window.TwoFA.ready; } catch {}
     if (window.TwoFA.isEnabled()) {
       modal(`
         <h2>🔐 Two-Factor Enabled</h2>
