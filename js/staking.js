@@ -199,8 +199,7 @@ const Staking = (() => {
       infoDiv.innerHTML = `
         <div style="display:flex;align-items:center;gap:8px">
           <img src="https://static.jup.ag/jupSOL/icon.png" alt=""
-               style="width:20px;height:20px;border-radius:50%;flex-shrink:0;background:var(--surface)"
-               onerror="this.style.display='none'">
+               style="width:20px;height:20px;border-radius:50%;flex-shrink:0;background:var(--surface)">
           <span>JupSOL balance: <b>${bal}</b>${sol ? ` (≈ ${sol} SOL)` : ''}</span>
         </div>
         ${currentRate ? `<div style="margin-top:4px">Rate: 1 JupSOL ≈ ${currentRate.toFixed(6)} SOL</div>` : ''}
@@ -506,7 +505,7 @@ const Staking = (() => {
           const voteTail = a.validator ? `${a.validator.slice(0,6)}…${a.validator.slice(-4)}` : '';
           const validatorHtml = v && (v.name || v.image)
             ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-                 ${v.image ? `<img src="${escapeHtml(v.image)}" alt="" style="width:22px;height:22px;border-radius:50%;background:var(--surface);object-fit:cover" onerror="this.style.display='none'">` : ''}
+                 ${v.image ? `<img src="${escapeHtml(v.image)}" alt="" style="width:22px;height:22px;border-radius:50%;background:var(--surface);object-fit:cover">` : ''}
                  <div style="font-weight:600;font-size:13px;color:var(--text)">${escapeHtml(v.name || voteTail)}</div>
                </div>`
             : (a.validator

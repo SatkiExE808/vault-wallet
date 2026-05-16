@@ -19,6 +19,41 @@ function safeUrl(u) {
 }
 window.safeUrl = safeUrl;
 
+// ── CSP-friendly global event delegation (M-N1) ────────────────
+// All inline on{click,error,change}= handlers were removed from
+// JS-generated HTML so script-src can drop 'unsafe-inline'. The
+// handlers below are the centralized replacements.
+
+// Broken-image hide: catches every img.error from anywhere in the app.
+// `error` doesn't bubble on <img>, but the capture phase reaches them.
+document.addEventListener('error', e => {
+  const t = e.target;
+  if (t && t.tagName === 'IMG') t.style.display = 'none';
+}, true);
+
+// Delegated click handler keyed off `data-action`. Each action is a
+// thin wrapper that pulls any state it needs from the same element's
+// data-* attributes (coin id, copy target, etc.).
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  switch (el.dataset.action) {
+    case 'show-setup':           if (typeof showSetup === 'function') showSetup(); break;
+    case 'select-coin':          if (typeof selectCoin === 'function') selectCoin(el.dataset.coinId); break;
+    case 'copy-xmr-key':         if (typeof copyXmrKey === 'function') copyXmrKey(el.dataset.target); break;
+    case 'confirm-reset-wallet': if (typeof confirmResetWallet === 'function') confirmResetWallet(); break;
+  }
+});
+
+// Delegated change handler for the Manage-Assets toggles (renderSettingsList
+// emits checkboxes with data-coin-id; the old onchange="handleCoinToggle(this)"
+// inline handler is gone).
+document.addEventListener('change', e => {
+  if (e.target.matches?.('input[type=checkbox][data-coin-id]')) {
+    if (typeof handleCoinToggle === 'function') handleCoinToggle(e.target);
+  }
+});
+
 // Custom confirm dialog — drop-in replacement for the browser-native
 // confirm(), which on Android/iOS WebViews renders as an OS pop-up that
 // clashes with the wallet's dark theme. Pass a `lines` array of
@@ -997,7 +1032,7 @@ async function completeSetup(mnemonic, restoreHeight, password, passphrase = '')
     state.mnemonic = mnemonic;
     await loadWallet();
   } catch(e) {
-    box.innerHTML = `<h1>Error</h1><p style="color:var(--red);margin-top:8px">${escapeHtml(e.message)}</p><button class="btn btn-outline" onclick="showSetup()" style="margin-top:16px;width:100%">Back</button>`;
+    box.innerHTML = `<h1>Error</h1><p style="color:var(--red);margin-top:8px">${escapeHtml(e.message)}</p><button class="btn btn-outline" data-action="show-setup" style="margin-top:16px;width:100%">Back</button>`;
   }
 }
 
@@ -1275,9 +1310,9 @@ function renderCoinList() {
   for (const cat of categories) {
     html += `<div class="coin-category">${cat}</div>`;
     html += active.filter(c => c.category === cat).map(coin => `
-      <div class="coin-item ${coin.id === state.active ? 'active' : ''}" id="ci-${coin.id}" onclick="selectCoin('${coin.id}')">
+      <div class="coin-item ${coin.id === state.active ? 'active' : ''}" id="ci-${coin.id}" data-action="select-coin" data-coin-id="${coin.id}">
         <div class="coin-icon">
-          <img src="${coin.icon}" alt="${coin.symbol}" width="32" height="32" onerror="this.style.display='none'">
+          <img src="${coin.icon}" alt="${coin.symbol}" width="32" height="32">
         </div>
         <div class="coin-info">
           <div class="coin-name">${coin.name}${coin.networkLabel
@@ -1361,12 +1396,12 @@ function updateReceiveTab() {
         <div style="font-size:12px;color:var(--text2);margin-bottom:4px">Private Spend Key</div>
         <div class="address-box" style="margin-top:0;margin-bottom:10px">
           <code id="xmr-spend-key" style="font-size:11px">Loading…</code>
-          <button class="btn btn-outline btn-sm" onclick="copyXmrKey('xmr-spend-key')">Copy</button>
+          <button class="btn btn-outline btn-sm" data-action="copy-xmr-key" data-target="xmr-spend-key">Copy</button>
         </div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:4px">Private View Key</div>
         <div class="address-box" style="margin-top:0">
           <code id="xmr-view-key" style="font-size:11px">Loading…</code>
-          <button class="btn btn-outline btn-sm" onclick="copyXmrKey('xmr-view-key')">Copy</button>
+          <button class="btn btn-outline btn-sm" data-action="copy-xmr-key" data-target="xmr-view-key">Copy</button>
         </div>
       </div>`;
     document.getElementById('tab-receive').appendChild(section);
@@ -1953,7 +1988,7 @@ function renderSettingsList() {
         <div class="settings-row">
           <div style="display:flex;align-items:center;gap:10px">
             <img src="${coin.icon}" alt="${coin.symbol}" width="28" height="28"
-              style="border-radius:50%;flex-shrink:0" onerror="this.style.display='none'">
+              style="border-radius:50%;flex-shrink:0">
             <div>
               <div style="font-size:14px;font-weight:600">${coin.name}
                 ${coin.networkLabel
@@ -1963,7 +1998,7 @@ function renderSettingsList() {
             </div>
           </div>
           <label class="toggle-switch">
-            <input type="checkbox" ${on ? 'checked' : ''} data-coin-id="${coin.id}" onchange="handleCoinToggle(this)">
+            <input type="checkbox" ${on ? 'checked' : ''} data-coin-id="${coin.id}">
             <span class="toggle-track"></span>
           </label>
         </div>`;
@@ -1975,7 +2010,7 @@ function renderSettingsList() {
   <div id="legacy-recovery-area" style="font-size:13px;color:var(--text2);margin-bottom:16px">Checking legacy address…</div>
 </div>
 <div style="padding-top:8px;border-top:1px solid var(--border)">
-  <button class="btn btn-danger" onclick="confirmResetWallet()" style="width:100%;font-size:13px">Remove Wallet from this Device</button>
+  <button class="btn btn-danger" data-action="confirm-reset-wallet" style="width:100%;font-size:13px">Remove Wallet from this Device</button>
 </div>`;
   document.getElementById('settings-coin-list').innerHTML = html;
   loadLegacyRecovery();

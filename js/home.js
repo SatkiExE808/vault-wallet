@@ -137,7 +137,7 @@
         return `
           <div class="asset-item" data-coin="${coin.id}">
             <div class="asset-icon">
-              <img src="${coin.icon}" alt="" onerror="this.style.display='none'">
+              <img src="${coin.icon}" alt="">
             </div>
             <div class="asset-meta">
               <div class="asset-name">${coin.name} ${badge} ${renderApyBadge(coin.id)}</div>
@@ -334,7 +334,7 @@
     const usd  = formatUSD(bal, state.prices[coin.id]) || '';
     const addr = state.addresses[coin.id] || '—';
 
-    $('wd-icon').innerHTML = `<img src="${coin.icon}" alt="" style="width:18px;height:18px;border-radius:50%" onerror="this.style.display='none'">`;
+    $('wd-icon').innerHTML = `<img src="${coin.icon}" alt="" style="width:18px;height:18px;border-radius:50%">`;
     $('wd-symbol').textContent = coin.symbol;
     const badge = $('wd-badge');
     if (coin.networkLabel) {
@@ -702,7 +702,7 @@
         return `
           <div class="asset-item" data-coin="${coin.id}">
             <div class="asset-icon">
-              <img src="${coin.icon}" alt="" onerror="this.style.display='none'">
+              <img src="${coin.icon}" alt="">
             </div>
             <div class="asset-meta">
               <div class="asset-name">${coin.name} ${badge} ${renderApyBadge(coin.id)}</div>
