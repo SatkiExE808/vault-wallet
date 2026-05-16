@@ -32,7 +32,11 @@ const EthereumWallet = (() => {
   // Defensive ceiling on gas price (5000 gwei is well above any historical
   // legitimate ETH spike). A misbehaving RPC could otherwise quote an absurd
   // gasPrice and silently burn the user's ETH on fees.
-  const MAX_GWEI = 5000;
+  // 500 gwei × 21k gas = 0.0105 ETH, ~$30 at $3k. Real honest spikes
+  // above this are extremely rare; a malicious RPC quoting just under
+  // the old 5000 cap could otherwise burn ~$300 of ETH per send with
+  // no user-visible warning.
+  const MAX_GWEI = 500;
   function _capGasPrice(gasPriceWei) {
     const capWei = ethers.parseUnits(String(MAX_GWEI), 'gwei');
     if (gasPriceWei > capWei) {

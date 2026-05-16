@@ -41,15 +41,22 @@ const EVMChains = (() => {
 
   // Defensive ceiling on gas price (in gwei) per chain. A compromised or
   // misbehaving RPC could otherwise quote an absurd gasPrice and burn the
-  // user's balance on fees with no warning. These caps are well above any
-  // historical legitimate spike for their respective chain.
+  // user's balance on fees with no warning. Caps tightened (M1): below
+  // each cap × 21000 gas should be << $100 worth of native; above the
+  // cap an honest spike is rare enough to warrant a fresh user confirm
+  // rather than auto-sign.
   const MAX_GAS_GWEI = {
-    ETH: 5000, BSC: 100, POLYGON: 3000, AVALANCHE: 1000,
-    ARBITRUM: 100, OPTIMISM: 100, BASE: 100,
+    ETH: 500,        // 500 gwei × 21k = 0.0105 ETH, ~$30 at $3k
+    BSC: 30,         // BSC post-EIP-1559 sits near 1 gwei
+    POLYGON: 500,    // POL fees usually <100 gwei
+    AVALANCHE: 200,  // AVAX base near 25 gwei
+    ARBITRUM: 50,    // L2 — total fee dominated by L1 data, not gas price
+    OPTIMISM: 50,
+    BASE: 50,
   };
 
   function _capGasPrice(chainKey, gasPriceWei) {
-    const cap = MAX_GAS_GWEI[chainKey] || 5000;
+    const cap = MAX_GAS_GWEI[chainKey] || 500;
     const capWei = ethers.parseUnits(String(cap), 'gwei');
     if (gasPriceWei > capWei) {
       throw new Error(`Gas price unreasonably high (${ethers.formatUnits(gasPriceWei,'gwei')} gwei > ${cap} cap). RPC may be misbehaving — refusing to sign.`);
