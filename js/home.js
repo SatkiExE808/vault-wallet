@@ -601,14 +601,17 @@
             // Tinted icon + verb based on tx.kind (set by coin modules
             // that classify their history). Falls back to plain
             // Sent/Received when the coin doesn't tag rows.
+            // Lucide-style SVGs; currentColor inherits the per-tint fg.
+            const _I = (path, sw = 2.2) =>
+              `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
             const TX_LABELS = {
-              'send':           { verb: 'Sent',            icon: '↑', tint: 'red'    },
-              'receive':        { verb: 'Received',        icon: '↓', tint: 'green'  },
-              'stake':          { verb: 'Staked',          icon: '🔒', tint: 'orange' },
-              'stake-withdraw': { verb: 'Withdrew stake',  icon: '↩', tint: 'green'  },
-              'stake-manage':   { verb: 'Stake action',    icon: '⚙', tint: 'orange' },
-              'liquid-stake':   { verb: 'Liquid staked',   icon: '💧', tint: 'cyan'   },
-              'liquid-unstake': { verb: 'Liquid unstaked', icon: '💧', tint: 'cyan'   },
+              'send':           { verb: 'Sent',            tint: 'red',    icon: _I('<path d="M7 17 L17 7"/><polyline points="8 7 17 7 17 16"/>', 2.4) },
+              'receive':        { verb: 'Received',        tint: 'green',  icon: _I('<path d="M17 7 L7 17"/><polyline points="16 17 7 17 7 8"/>', 2.4) },
+              'stake':          { verb: 'Staked',          tint: 'orange', icon: _I('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11"/>') },
+              'stake-withdraw': { verb: 'Withdrew stake',  tint: 'green',  icon: _I('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7.5a4 4 0 0 1 7-2.6"/>') },
+              'stake-manage':   { verb: 'Stake action',    tint: 'orange', icon: _I('<path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><polyline points="3 22 3 16 9 16"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><polyline points="21 2 21 8 15 8"/>') },
+              'liquid-stake':   { verb: 'Liquid staked',   tint: 'cyan',   icon: _I('<path d="M12 2.5C9 6 5.5 10 5.5 14a6.5 6.5 0 0 0 13 0c0-4-3.5-8-6.5-11.5z"/><polyline points="9 12 12 15 15 12"/>') },
+              'liquid-unstake': { verb: 'Liquid unstaked', tint: 'cyan',   icon: _I('<path d="M12 2.5C9 6 5.5 10 5.5 14a6.5 6.5 0 0 0 13 0c0-4-3.5-8-6.5-11.5z"/><polyline points="9 13 12 10 15 13"/>') },
             };
             const TX_TINTS = {
               red:    { bg: 'rgba(239,68,68,0.15)',  fg: '#ef4444' },

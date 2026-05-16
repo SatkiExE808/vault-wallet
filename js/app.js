@@ -1531,14 +1531,29 @@ async function updateHistoryTab() {
       // / liquid-stake / liquid-unstake / send / receive. Other coins
       // currently leave it undefined so they fall back to Sent/Received.
       const kind = tx.kind || (send ? 'send' : 'receive');
+      // Inline SVGs (Lucide-style stroke icons). currentColor inherits
+      // the tint we apply on the wrapping circle. Replaces emoji which
+      // rendered inconsistently across iOS/Android and didn't
+      // differentiate liquid-stake from liquid-unstake.
+      const I = (path, sw = 2.2) =>
+        `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+      const ICONS = {
+        send:            I('<path d="M7 17 L17 7"/><polyline points="8 7 17 7 17 16"/>', 2.4),
+        receive:         I('<path d="M17 7 L7 17"/><polyline points="16 17 7 17 7 8"/>', 2.4),
+        stake:           I('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11"/>'),
+        'stake-withdraw':I('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7.5a4 4 0 0 1 7-2.6"/>'),
+        'stake-manage':  I('<path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><polyline points="3 22 3 16 9 16"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><polyline points="21 2 21 8 15 8"/>'),
+        'liquid-stake':  I('<path d="M12 2.5C9 6 5.5 10 5.5 14a6.5 6.5 0 0 0 13 0c0-4-3.5-8-6.5-11.5z"/><polyline points="9 12 12 15 15 12"/>'),
+        'liquid-unstake':I('<path d="M12 2.5C9 6 5.5 10 5.5 14a6.5 6.5 0 0 0 13 0c0-4-3.5-8-6.5-11.5z"/><polyline points="9 13 12 10 15 13"/>'),
+      };
       const labels = {
-        'send':            { verb: 'Sent',           icon: '↑', tint: 'red'    },
-        'receive':         { verb: 'Received',       icon: '↓', tint: 'green'  },
-        'stake':           { verb: 'Staked',         icon: '🔒', tint: 'orange' },
-        'stake-withdraw':  { verb: 'Withdrew stake', icon: '↩', tint: 'green'  },
-        'stake-manage':    { verb: 'Stake action',   icon: '⚙', tint: 'orange' },
-        'liquid-stake':    { verb: 'Liquid staked',  icon: '💧', tint: 'cyan'   },
-        'liquid-unstake':  { verb: 'Liquid unstaked',icon: '💧', tint: 'cyan'   },
+        'send':            { verb: 'Sent',           icon: ICONS.send,             tint: 'red'    },
+        'receive':         { verb: 'Received',       icon: ICONS.receive,          tint: 'green'  },
+        'stake':           { verb: 'Staked',         icon: ICONS.stake,            tint: 'orange' },
+        'stake-withdraw':  { verb: 'Withdrew stake', icon: ICONS['stake-withdraw'],tint: 'green'  },
+        'stake-manage':    { verb: 'Stake action',   icon: ICONS['stake-manage'],  tint: 'orange' },
+        'liquid-stake':    { verb: 'Liquid staked',  icon: ICONS['liquid-stake'],  tint: 'cyan'   },
+        'liquid-unstake':  { verb: 'Liquid unstaked',icon: ICONS['liquid-unstake'],tint: 'cyan'   },
       };
       const lbl = labels[kind] || labels[send ? 'send' : 'receive'];
       const tintColors = {
