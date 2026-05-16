@@ -61,7 +61,7 @@
       <div class="topbar">
         <div class="topbar-title">
           <img src="icons/icon-192.png" alt="Vault"
-               style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0">
+               style="width:30px;height:30px;border-radius:22%;object-fit:cover;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,0.25)">
           <h1>Vault</h1>
         </div>
         <div style="display:flex;gap:8px">
@@ -179,6 +179,16 @@
         <div class="topbar-title"><h1>Settings</h1></div>
       </div>
       <div class="scroll-area" style="padding:0 12px;display:flex;flex-direction:column;gap:8px">
+
+        <!-- App hero — squircle icon, name, version (iOS Settings pattern) -->
+        <div class="settings-hero">
+          <img src="icons/icon-192.png" alt="Vault" class="settings-hero-icon">
+          <h2 class="settings-hero-name">Vault</h2>
+          <p class="settings-hero-sub">Self-custodial wallet</p>
+          <p class="settings-hero-version" id="settings-app-version">v1.0</p>
+        </div>
+
+        <div class="settings-section-label">Security</div>
         <div class="card" style="padding:0">
           <button class="settings-menu-item" id="menu-show-seed">
             <span class="menu-icon">
@@ -201,6 +211,10 @@
             <span class="menu-label">Enable Face ID / Biometric</span>
             <span class="menu-arrow">›</span>
           </button>
+        </div>
+
+        <div class="settings-section-label">Wallet</div>
+        <div class="card" style="padding:0">
           <button class="settings-menu-item" id="menu-manage-assets">
             <span class="menu-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
@@ -230,6 +244,8 @@
             <span class="menu-arrow" id="menu-passphrase-value">Off ›</span>
           </button>
         </div>
+
+        <div class="settings-section-label">System</div>
         <div class="card" style="padding:0">
           <button class="settings-menu-item" id="menu-address-selftest">
             <span class="menu-icon">
@@ -253,9 +269,8 @@
             <span class="menu-arrow">›</span>
           </button>
         </div>
-        <p style="text-align:center;color:var(--text3);font-size:12px;margin:16px 0 8px">
-          Vault — Self-custodial · v1.0
-          <span id="settings-sw-version" style="display:block;margin-top:4px;color:var(--text3);opacity:0.7"></span>
+        <p style="text-align:center;color:var(--text3);font-size:11px;margin:18px 0 12px;opacity:0.7">
+          <span id="settings-sw-version"></span>
         </p>
       </div>
     </div>
