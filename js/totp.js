@@ -1,23 +1,87 @@
 // RFC 6238 TOTP (Google Authenticator-compatible) — pure browser crypto.
 //
-// Threat model: the secret lives in localStorage on the same device as the
-// mnemonic. An attacker with full device access + the wallet password can
-// compute valid codes themselves, so this isn't true 2FA against that
-// adversary — it's protection against:
-//   - shoulder-surfing / accidental sends after device unlock
-//   - malware that grabs mnemonic/balance APIs but doesn't know about TOTP
-//   - casual physical access (kid grabs unlocked phone)
-// The legitimate flow makes the user look at a separate authenticator app,
-// which is friction enough for those threats.
+// Threat model: same per-device shoulder-surfing / casual-malware tier as
+// before. With the H2 fix the base32 secret now lives in native
+// SecureStorage (iOS Keychain / Android Keystore) instead of plaintext
+// localStorage, so a localStorage read alone can't compute codes anymore.
+// Attackers with full app-level execution still can — TOTP is friction,
+// not a hard root-of-trust.
 const TwoFA = (() => {
-  const STORE_KEY = 'vault.totp_secret';   // base32 string when enabled
+  const LEGACY_LS_KEY = 'vault.totp_secret'; // pre-H2 plaintext entry
+  const SS_PREFIX = 'capacitor-storage_';
+  const SS_KEY    = 'vault.totp_secret';
   const ISSUER = 'Vault Wallet';
   const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   const STEP = 30; // RFC 6238 default
 
-  function isEnabled() { return !!localStorage.getItem(STORE_KEY); }
-  function getSecret() { return localStorage.getItem(STORE_KEY) || ''; }
-  function disable() { localStorage.removeItem(STORE_KEY); }
+  // SecureStorage shim — same pattern as settings.js _bioKey* helpers
+  // (C2). Native (Capacitor) goes through @aparajita/capacitor-secure-
+  // storage → iOS Keychain / Android Keystore. Browser PWA has no OS
+  // keychain access and falls back to localStorage under SS_KEY (still
+  // an improvement over the legacy plaintext name because it doesn't
+  // co-locate with the wallet's encrypted-blob entries by convention).
+  async function _ssSet(value) {
+    const ss = window.Capacitor?.Plugins?.SecureStorage;
+    if (ss?.internalSetItem) {
+      await ss.internalSetItem({
+        prefixedKey: SS_PREFIX + SS_KEY,
+        data: JSON.stringify(value),
+        sync: false,
+        access: 0, // KeychainAccess.whenUnlocked
+      });
+      return;
+    }
+    localStorage.setItem(SS_KEY, value);
+  }
+  async function _ssGet() {
+    const ss = window.Capacitor?.Plugins?.SecureStorage;
+    if (ss?.internalGetItem) {
+      try {
+        const r = await ss.internalGetItem({ prefixedKey: SS_PREFIX + SS_KEY, sync: false });
+        if (r?.data == null) return null;
+        try { return JSON.parse(r.data); } catch { return r.data; }
+      } catch { return null; }
+    }
+    return localStorage.getItem(SS_KEY);
+  }
+  async function _ssRemove() {
+    const ss = window.Capacitor?.Plugins?.SecureStorage;
+    if (ss?.internalRemoveItem) {
+      try { await ss.internalRemoveItem({ prefixedKey: SS_PREFIX + SS_KEY }); } catch {}
+    }
+    localStorage.removeItem(SS_KEY);
+  }
+
+  // In-memory cache populated asynchronously at boot — TOTP prompts only
+  // fire on user-initiated send/stake actions, by which time the load
+  // has long since resolved. isEnabled() returns the cached state for
+  // synchronous UI bindings.
+  let _cached = null;
+  const ready = (async () => {
+    try {
+      let v = await _ssGet();
+      if (!v) {
+        // Migrate from the legacy plaintext localStorage entry.
+        const legacy = localStorage.getItem(LEGACY_LS_KEY);
+        if (legacy) {
+          try { await _ssSet(legacy); v = legacy; localStorage.removeItem(LEGACY_LS_KEY); }
+          catch (e) { console.warn('TOTP H2 migration failed:', e); }
+        }
+      }
+      _cached = v || null;
+    } catch (e) { console.warn('TOTP load failed:', e); }
+  })();
+
+  function isEnabled() { return !!_cached; }
+  function getSecret() { return _cached || ''; }
+  async function setSecret(secret) {
+    _cached = secret;
+    await _ssSet(secret);
+  }
+  async function disable() {
+    _cached = null;
+    await _ssRemove();
+  }
 
   // Generate a fresh 20-byte (160-bit) secret encoded as base32.
   function generateSecret() {
@@ -142,7 +206,7 @@ const TwoFA = (() => {
     });
   }
 
-  return { isEnabled, getSecret, disable, generateSecret, code, verify, buildOtpAuthUri, prompt };
+  return { isEnabled, getSecret, setSecret, disable, generateSecret, code, verify, buildOtpAuthUri, prompt, ready };
 })();
 
 window.TwoFA = TwoFA;

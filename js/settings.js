@@ -705,7 +705,7 @@
           if (!confirm('Turn off two-factor authentication?')) return;
           try { await verifyAuth('Disable two-factor'); }
           catch { return; }
-          window.TwoFA.disable();
+          await window.TwoFA.disable();
           refresh2FALabel();
           close();
           toast('Two-factor disabled');
@@ -771,7 +771,7 @@
           input.value = '';
           return;
         }
-        localStorage.setItem('vault.totp_secret', secret);
+        await window.TwoFA.setSecret(secret);
         refresh2FALabel();
         close();
         toast('Two-factor enabled');
