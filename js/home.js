@@ -197,6 +197,15 @@
   // this, the inline send form silently snaps shut every ~30 s while the
   // user is mid-edit.
   let _lastRenderedCoin = null;
+  // Explicit "this panel was opened by the user" flags. Set to true when
+  // the user taps Send / History; reset to false on real coin-switch,
+  // explicit toggle-close, or successful send. At the END of
+  // renderWalletDisplay we use these to FORCE the matching panel back
+  // into view if it was open — that way, even if some other code path
+  // sneaks a `style.display = 'none'` in mid-render, the panel is
+  // re-shown before the render completes. Belt-and-suspenders.
+  let _sendFormOpen = false;
+  let _histListOpen = false;
 
   // Opens an info modal that walks the user through verifying the displayed
   // multi-address in a third-party BIP84/BIP44 wallet. Critical safety
@@ -415,6 +424,8 @@
     if (_lastRenderedCoin !== coin.id) {
       $('wd-send-form').style.display = 'none';
       $('wd-history-list').style.display = 'none';
+      _sendFormOpen = false;
+      _histListOpen = false;
       setActiveAction(null);
     }
 
@@ -424,13 +435,16 @@
       const visible = form.style.display !== 'none';
       if (visible) {
         form.style.display = 'none';
+        _sendFormOpen = false;
         clearFeeTimer();
         setActiveAction(null);
         return;
       }
       // Close history if open
       $('wd-history-list').style.display = 'none';
+      _histListOpen = false;
       form.style.display = 'block';
+      _sendFormOpen = true;
       setActiveAction('wd-send-toggle');
       // Sync state: select this coin so app.js helpers (validateAddress, send, fee) work
       selectCoin(coin.id);
@@ -543,6 +557,7 @@
         $('wd-send-to').value = '';
         $('wd-send-amount').value = '';
         $('wd-send-form').style.display = 'none';
+        _sendFormOpen = false;
         setTimeout(refreshBalances, 4000);
       } catch (e) {
         toast(`Error: ${e.message || 'Transaction failed.'}`);
@@ -555,11 +570,13 @@
     $('wd-history-toggle').onclick = async () => {
       const histDiv = $('wd-history-list');
       const visible = histDiv.style.display !== 'none';
-      if (visible) { histDiv.style.display = 'none'; setActiveAction(null); return; }
+      if (visible) { histDiv.style.display = 'none'; _histListOpen = false; setActiveAction(null); return; }
       // Close send form if open
       $('wd-send-form').style.display = 'none';
+      _sendFormOpen = false;
 
       histDiv.style.display = 'block';
+      _histListOpen = true;
       setActiveAction('wd-history-toggle');
       histDiv.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:8px 0">Loading…</p>`;
       // Sync state so updateHistoryTab uses the right coin, then render into our div
@@ -637,6 +654,17 @@
 
     // (Form reset already handled earlier in this function — at the top
     // of the button-wiring block, gated on coin-change.)
+    // ── Belt-and-suspenders: force-restore the open panel ──
+    // If the user opened Send or History, make absolutely sure it's
+    // visible at the end of this render. Any rogue code path that did
+    // `style.display = 'none'` while we were rendering is overridden.
+    if (_sendFormOpen) {
+      $('wd-send-form').style.display = 'block';
+      setActiveAction('wd-send-toggle');
+    } else if (_histListOpen) {
+      $('wd-history-list').style.display = 'block';
+      setActiveAction('wd-history-toggle');
+    }
     _lastRenderedCoin = coin.id;
 
     // Highlight selected coin in the picker list
