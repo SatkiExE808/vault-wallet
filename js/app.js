@@ -1905,6 +1905,7 @@ document.getElementById('lock-btn').onclick = async () => {
   if (typeof TxProgress !== 'undefined') TxProgress.stop();
   if (typeof AaveEarn !== 'undefined') AaveEarn.stopApyRefresh();
   state.mnemonic = null;
+  state.passphrase = '';   // separate secret from the mnemonic — wipe too
   // Wipe ALL session state so prices / aave APYs / addresses from this
   // session don't leak into the next unlock.
   Object.assign(state, {
