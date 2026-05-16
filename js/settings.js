@@ -53,7 +53,12 @@
       // After whichever first factor succeeds, optionally chain TOTP if
       // the user enabled 2FA. Any signing path that gates on verifyAuth
       // (send, stake, earn, sweep) automatically inherits the second factor.
-      const finishWith2FA = () => {
+      // Awaiting TwoFA.ready avoids a first-launch race where the async
+      // SecureStorage load hasn't populated _cached yet — without it,
+      // isEnabled() returns false and the 2FA prompt is silently skipped
+      // for the first send after cold start (H-N1 fix).
+      const finishWith2FA = async () => {
+        try { await window.TwoFA?.ready; } catch {}
         if (window.TwoFA?.isEnabled?.()) {
           window.TwoFA.prompt().then(resolve).catch(reject);
         } else {

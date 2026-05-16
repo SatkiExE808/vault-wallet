@@ -141,6 +141,9 @@ const TwoFA = (() => {
 
   // Verify entered code against ±1 window for clock skew.
   async function verify(entered) {
+    // Wait for the async secret load to settle so a fresh-launch caller
+    // doesn't see a stale "not configured = pass-through". H-N1 fix.
+    try { await ready; } catch {}
     if (!isEnabled()) return true; // not configured = pass-through
     const sanitized = String(entered || '').replace(/\D/g, '').slice(0, 6);
     if (sanitized.length !== 6) return false;
