@@ -198,6 +198,8 @@
                 localStorage.removeItem('biometric_enabled');
                 localStorage.removeItem('biometric_credential_id');
                 localStorage.removeItem('biometric_blob');
+                // Also drop the keychain entry so a re-enable starts clean.
+                _bioKeyRemove().catch(() => {});
               }
               close();
               toast('Password updated. Biometric was disabled — re-enable in Settings.');
@@ -221,6 +223,55 @@
     return window.Capacitor?.Plugins?.BiometricAuthNative
         || window.Capacitor?.Plugins?.BiometricAuth
         || null;
+  }
+
+  // ── Native SecureStorage shim for the biometric AES key ────
+  // Storing the raw biometric-unlock key in localStorage next to the
+  // ciphertext it protects (the original blob layout) defeats the whole
+  // gate — anyone who can read localStorage gets both halves.
+  //
+  // Native (Capacitor): persist the key through
+  // @aparajita/capacitor-secure-storage, which backs onto the iOS
+  // Keychain / Android Keystore. We talk directly to the bridge's
+  // internal* methods to avoid pulling in the ESM wrapper (the app
+  // has no JS bundler).
+  //
+  // Browser PWA: no OS keychain is reachable from web JS, so we keep
+  // the key in localStorage under a separate name. Same threat model
+  // as before this change — the native app is where this fix matters.
+  const _SS_PREFIX = 'capacitor-storage_';
+  const _SS_KEY    = 'vault.bio_aes_key';
+
+  async function _bioKeySet(rawKeyB64) {
+    const ss = window.Capacitor?.Plugins?.SecureStorage;
+    if (ss?.internalSetItem) {
+      await ss.internalSetItem({
+        prefixedKey: _SS_PREFIX + _SS_KEY,
+        data: JSON.stringify(rawKeyB64),
+        sync: false,
+        access: 0, // KeychainAccess.whenUnlocked
+      });
+      return;
+    }
+    localStorage.setItem(_SS_KEY, rawKeyB64);
+  }
+  async function _bioKeyGet() {
+    const ss = window.Capacitor?.Plugins?.SecureStorage;
+    if (ss?.internalGetItem) {
+      try {
+        const r = await ss.internalGetItem({ prefixedKey: _SS_PREFIX + _SS_KEY, sync: false });
+        if (r?.data == null) return null;
+        try { return JSON.parse(r.data); } catch { return r.data; }
+      } catch { return null; }
+    }
+    return localStorage.getItem(_SS_KEY);
+  }
+  async function _bioKeyRemove() {
+    const ss = window.Capacitor?.Plugins?.SecureStorage;
+    if (ss?.internalRemoveItem) {
+      try { await ss.internalRemoveItem({ prefixedKey: _SS_PREFIX + _SS_KEY }); } catch {}
+    }
+    localStorage.removeItem(_SS_KEY);
   }
 
   async function biometricSupported() {
@@ -290,14 +341,21 @@
             localStorage.setItem('biometric_credential_id', btoa(String.fromCharCode(...new Uint8Array(cred.rawId))));
           }
 
-          // Encrypt password with random key. The biometric prompt at unlock is
-          // the gate that decides whether the saved key gets used.
+          // Encrypt password with a random AES-GCM key. The raw key lives
+          // in native SecureStorage (OS keychain); localStorage only
+          // stores IV + ciphertext. Without the key — which web JS can't
+          // read out of the keychain — the blob in localStorage is just
+          // 256-bit-secure ciphertext.
           const aesKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
           const iv = crypto.getRandomValues(new Uint8Array(12));
           const enc = new TextEncoder();
           const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, enc.encode(pwd));
           const rawKey = await crypto.subtle.exportKey('raw', aesKey);
-          const blob = btoa(String.fromCharCode(...iv, ...new Uint8Array(rawKey), ...new Uint8Array(ct)));
+          const rawKeyB64 = btoa(String.fromCharCode(...new Uint8Array(rawKey)));
+          await _bioKeySet(rawKeyB64);
+
+          // New blob layout: [12-byte IV][N-byte ciphertext]. No key.
+          const blob = btoa(String.fromCharCode(...iv, ...new Uint8Array(ct)));
 
           localStorage.setItem('biometric_enabled', '1');
           localStorage.setItem('biometric_method', support.native ? 'native' : 'webauthn');
@@ -322,6 +380,9 @@
       localStorage.removeItem('biometric_blob');
       localStorage.removeItem('biometric_method');
     } catch (e) { console.warn('clearBiometric:', e); }
+    // Drop the keychain entry too — fire-and-forget since the user-facing
+    // toast shouldn't block on a keychain round-trip.
+    _bioKeyRemove().catch(() => {});
     toast('Biometric disabled');
     try { renderSettingsTab(); } catch {}
   }
@@ -409,8 +470,35 @@
 
     const blobBytes = Uint8Array.from(atob(blobB64), c => c.charCodeAt(0));
     const iv = blobBytes.slice(0, 12);
-    const rawKey = blobBytes.slice(12, 12 + 32);
-    const ct = blobBytes.slice(12 + 32);
+
+    // Post-C2 layout: key in SecureStorage, blob is [IV][ct].
+    // Pre-C2 (legacy) layout: blob is [IV][32-byte key][ct].
+    // Detect which we have, migrate transparently on first unlock.
+    let rawKeyB64 = await _bioKeyGet();
+    let ct;
+    if (rawKeyB64) {
+      ct = blobBytes.slice(12);
+    } else if (blobBytes.length > 12 + 32) {
+      // Legacy blob — extract key, push it to SecureStorage, rewrite blob.
+      const rawKeyBytes = blobBytes.slice(12, 12 + 32);
+      ct = blobBytes.slice(12 + 32);
+      rawKeyB64 = btoa(String.fromCharCode(...rawKeyBytes));
+      try {
+        await _bioKeySet(rawKeyB64);
+        const newBlob = new Uint8Array(iv.length + ct.length);
+        newBlob.set(iv, 0);
+        newBlob.set(ct, iv.length);
+        localStorage.setItem('biometric_blob', btoa(String.fromCharCode(...newBlob)));
+      } catch (e) {
+        // Migration failed (keychain unavailable?) — proceed with the
+        // in-memory key for this unlock and try again next time.
+        console.warn('biometric C2 migration: SecureStorage write failed', e);
+      }
+    } else {
+      throw new Error('Biometric data missing — re-enable biometric');
+    }
+
+    const rawKey = Uint8Array.from(atob(rawKeyB64), c => c.charCodeAt(0));
     const aesKey = await crypto.subtle.importKey('raw', rawKey, 'AES-GCM', false, ['decrypt']);
     const pwdBytes = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ct);
     return new TextDecoder().decode(pwdBytes);
