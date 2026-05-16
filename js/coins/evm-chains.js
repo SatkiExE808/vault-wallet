@@ -200,5 +200,9 @@ const EVMChains = (() => {
     });
   }
 
-  return { deriveAddress, getNative, getToken, estimateFee, sendNative, sendToken };
+  // Expose the chain lock so other EVM-touching modules (aave, future
+  // swap/stake helpers) can acquire it before broadcasting on the same
+  // chain. Without this the M5 nonce protection has a hole — see M-N3.
+  return { deriveAddress, getNative, getToken, estimateFee, sendNative, sendToken, _withChainLock };
 })();
+window.EVMChains = EVMChains;

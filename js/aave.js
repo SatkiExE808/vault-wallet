@@ -132,42 +132,56 @@ const AaveEarn = (() => {
     return apy.toFixed(2);
   }
 
-  async function supply(mnemonic, coinId, amount) {
+  // Acquire the EVMChains per-chain send lock around supply/withdraw so
+  // an Aave deposit and a regular send on the same chain can't both
+  // grab nonce 'pending' and race. Falls back to a passthrough if
+  // EVMChains hasn't loaded yet (defensive; in practice it loads
+  // before aave.js per index.html script order). M-N3 fix.
+  function _chainLocked(chainKey, fn) {
+    const lock = window.EVMChains?._withChainLock;
+    return lock ? lock(chainKey, fn) : fn();
+  }
+
+  function supply(mnemonic, coinId, amount) {
     const cfg = SUPPORTED[coinId];
     if (!cfg) throw new Error('Asset not supported on Aave');
-    const provider = getProvider(cfg.chain);
-    const wallet = ethers.Wallet.fromPhrase(mnemonic, _pp()).connect(provider);
-    const underlying = new ethers.Contract(cfg.underlying, ERC20_ABI, wallet);
-    const pool = new ethers.Contract(POOLS[cfg.chain], POOL_ABI, wallet);
-    const amt = ethers.parseUnits(String(amount), cfg.dec);
-    const allowance = await underlying.allowance(wallet.address, POOLS[cfg.chain]);
-    if (allowance < amt) {
-      // USDT contracts on Ethereum and BSC reject approve(spender, X) when
-      // the existing allowance is non-zero — requires reset to 0 first.
-      // Other ERC-20s allow direct overwrite, but resetting first is harmless.
-      if (allowance > 0n) {
-        const resetTx = await underlying.approve(POOLS[cfg.chain], 0);
-        await resetTx.wait();
+    return _chainLocked(cfg.chain, async () => {
+      const provider = getProvider(cfg.chain);
+      const wallet = ethers.Wallet.fromPhrase(mnemonic, _pp()).connect(provider);
+      const underlying = new ethers.Contract(cfg.underlying, ERC20_ABI, wallet);
+      const pool = new ethers.Contract(POOLS[cfg.chain], POOL_ABI, wallet);
+      const amt = ethers.parseUnits(String(amount), cfg.dec);
+      const allowance = await underlying.allowance(wallet.address, POOLS[cfg.chain]);
+      if (allowance < amt) {
+        // USDT contracts on Ethereum and BSC reject approve(spender, X) when
+        // the existing allowance is non-zero — requires reset to 0 first.
+        // Other ERC-20s allow direct overwrite, but resetting first is harmless.
+        if (allowance > 0n) {
+          const resetTx = await underlying.approve(POOLS[cfg.chain], 0);
+          await resetTx.wait();
+        }
+        const approveTx = await underlying.approve(POOLS[cfg.chain], ethers.MaxUint256);
+        await approveTx.wait();
       }
-      const approveTx = await underlying.approve(POOLS[cfg.chain], ethers.MaxUint256);
-      await approveTx.wait();
-    }
-    const tx = await pool.supply(cfg.underlying, amt, wallet.address, 0);
-    return tx.hash;
+      const tx = await pool.supply(cfg.underlying, amt, wallet.address, 0);
+      return tx.hash;
+    });
   }
 
   // Pass null amount to withdraw the full position (Aave reads MaxUint256).
-  async function withdraw(mnemonic, coinId, amount) {
+  function withdraw(mnemonic, coinId, amount) {
     const cfg = SUPPORTED[coinId];
     if (!cfg) throw new Error('Asset not supported on Aave');
-    const provider = getProvider(cfg.chain);
-    const wallet = ethers.Wallet.fromPhrase(mnemonic, _pp()).connect(provider);
-    const pool = new ethers.Contract(POOLS[cfg.chain], POOL_ABI, wallet);
-    const amt = (amount == null || amount === 'max')
-      ? ethers.MaxUint256
-      : ethers.parseUnits(String(amount), cfg.dec);
-    const tx = await pool.withdraw(cfg.underlying, amt, wallet.address);
-    return tx.hash;
+    return _chainLocked(cfg.chain, async () => {
+      const provider = getProvider(cfg.chain);
+      const wallet = ethers.Wallet.fromPhrase(mnemonic, _pp()).connect(provider);
+      const pool = new ethers.Contract(POOLS[cfg.chain], POOL_ABI, wallet);
+      const amt = (amount == null || amount === 'max')
+        ? ethers.MaxUint256
+        : ethers.parseUnits(String(amount), cfg.dec);
+      const tx = await pool.withdraw(cfg.underlying, amt, wallet.address);
+      return tx.hash;
+    });
   }
 
   // ── Bulk APY refresh (powers the per-row APY badges) ──────────────
