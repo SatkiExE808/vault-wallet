@@ -572,21 +572,19 @@ const COINS = [
 });
 
 // ── EVM chain config — Blockscout (free, no API key) + explorer links ─────────
-// Etherscan v2 proxy endpoints — primary is etherscan.iamhch.com (EYE-HCH
-// Hetzner), fallback is sol-rpc.iamhch.com/etherscan (layer-sg). Both
-// inject the apikey server-side and require the X-Vault-Wallet header.
-// The wallet tries primary first; on network error / non-2xx it cycles
-// to the fallback. Multi-host failover protects BSC/OP history from a
-// single-VPS outage (post-audit recommendation).
+// Etherscan v2 proxy endpoints — all proxies on EYE-HCH (Hetzner).
+// Both sol-rpc and etherscan now share a single VPS; if EYE-HCH is
+// down, BSC/OP history fails. To restore real multi-host failover,
+// add a second host to ETHERSCAN_PROXIES (the _etherscanHistory
+// loop already iterates the array on errors).
 const ETHERSCAN_PROXIES = [
   'https://etherscan.iamhch.com/',
-  'https://sol-rpc.iamhch.com/etherscan',
 ];
 
 const CHAIN_CONFIG = {
   ETH:       { blockscout: 'https://eth.blockscout.com',      explorer: 'https://etherscan.io' },
-  // Etherscan v2 routing — see ETHERSCAN_PROXIES above for the chain
-  // of failover hosts. chainId is appended client-side.
+  // Etherscan v2 routing — see ETHERSCAN_PROXIES above. chainId is
+  // appended client-side. Array form supports failover.
   BSC:       { etherscan:  ETHERSCAN_PROXIES, chainId: 56, explorer: 'https://bscscan.com' },
   POLYGON:   { blockscout: 'https://polygon.blockscout.com',  explorer: 'https://polygonscan.com' },
   AVALANCHE: { etherscan:  'https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan/api', explorer: 'https://snowtrace.io' },
