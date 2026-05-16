@@ -36,6 +36,18 @@ const EthereumWallet = (() => {
   // above this are extremely rare; a malicious RPC quoting just under
   // the old 5000 cap could otherwise burn ~$300 of ETH per send with
   // no user-visible warning.
+  // Serialize sends so two rapid taps can't both grab nonce 'pending'
+  // and broadcast against the same slot — that race silently replaces
+  // one tx with the other and looks like fund loss to the user.
+  // The queue covers the nonce-fetch → sign → submit lifecycle of each
+  // send call atomically (M5).
+  let _sendQueue = Promise.resolve();
+  function _withSendLock(fn) {
+    const run = _sendQueue.then(fn, fn);
+    _sendQueue = run.catch(() => {});
+    return run;
+  }
+
   const MAX_GWEI = 500;
   function _capGasPrice(gasPriceWei) {
     const capWei = ethers.parseUnits(String(MAX_GWEI), 'gwei');
@@ -70,48 +82,52 @@ const EthereumWallet = (() => {
     return { fee: parseFloat(ethers.formatEther(gasPrice * gasLimit)).toFixed(6), symbol: 'ETH', gwei, isRollup: false };
   }
 
-  async function sendETH(privateKey, toAddress, amount) {
-    const wallet = new ethers.Wallet(privateKey);
-    const [nonceHex, gasPriceHex] = await Promise.all([
-      rpcCall('eth_getTransactionCount', [wallet.address, 'pending']),
-      rpcCall('eth_gasPrice', []),
-    ]);
-    const gasPrice = _capGasPrice(BigInt(gasPriceHex));
-    const tx = ethers.Transaction.from({
-      to: toAddress, value: ethers.parseEther(String(amount)),
-      nonce: parseInt(nonceHex, 16), gasPrice,
-      gasLimit: 21000, chainId: 1,
+  function sendETH(privateKey, toAddress, amount) {
+    return _withSendLock(async () => {
+      const wallet = new ethers.Wallet(privateKey);
+      const [nonceHex, gasPriceHex] = await Promise.all([
+        rpcCall('eth_getTransactionCount', [wallet.address, 'pending']),
+        rpcCall('eth_gasPrice', []),
+      ]);
+      const gasPrice = _capGasPrice(BigInt(gasPriceHex));
+      const tx = ethers.Transaction.from({
+        to: toAddress, value: ethers.parseEther(String(amount)),
+        nonce: parseInt(nonceHex, 16), gasPrice,
+        gasLimit: 21000, chainId: 1,
+      });
+      return rpcCall('eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
     });
-    return rpcCall('eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
   }
 
-  async function sendToken(privateKey, toAddress, amount, token) {
-    const t = TOKENS[token];
-    const wallet = new ethers.Wallet(privateKey);
-    const data = new ethers.Interface(['function transfer(address,uint256)']).encodeFunctionData(
-      'transfer', [toAddress, ethers.parseUnits(String(amount), t.decimals)]
-    );
-    const [nonceHex, gasPriceHex] = await Promise.all([
-      rpcCall('eth_getTransactionCount', [wallet.address, 'pending']),
-      rpcCall('eth_gasPrice', []),
-    ]);
-    // eth_estimateGas instead of hardcoded 100000 — some tokens
-    // (USDT with hooks, fee-on-transfer, etc.) need more gas, and
-    // hardcoding caused silent underpayment for those edge cases.
-    let gasLimit = 100000n;
-    try {
-      const est = await rpcCall('eth_estimateGas', [{
-        from: wallet.address, to: t.address, data,
-      }]);
-      gasLimit = BigInt(est) * 12n / 10n;  // 20% buffer over simulated estimate
-    } catch { /* fall back to 100k */ }
-    const gasPrice = _capGasPrice(BigInt(gasPriceHex));
-    const tx = ethers.Transaction.from({
-      to: t.address, data,
-      nonce: parseInt(nonceHex, 16), gasPrice,
-      gasLimit, chainId: 1,
+  function sendToken(privateKey, toAddress, amount, token) {
+    return _withSendLock(async () => {
+      const t = TOKENS[token];
+      const wallet = new ethers.Wallet(privateKey);
+      const data = new ethers.Interface(['function transfer(address,uint256)']).encodeFunctionData(
+        'transfer', [toAddress, ethers.parseUnits(String(amount), t.decimals)]
+      );
+      const [nonceHex, gasPriceHex] = await Promise.all([
+        rpcCall('eth_getTransactionCount', [wallet.address, 'pending']),
+        rpcCall('eth_gasPrice', []),
+      ]);
+      // eth_estimateGas instead of hardcoded 100000 — some tokens
+      // (USDT with hooks, fee-on-transfer, etc.) need more gas, and
+      // hardcoding caused silent underpayment for those edge cases.
+      let gasLimit = 100000n;
+      try {
+        const est = await rpcCall('eth_estimateGas', [{
+          from: wallet.address, to: t.address, data,
+        }]);
+        gasLimit = BigInt(est) * 12n / 10n;  // 20% buffer over simulated estimate
+      } catch { /* fall back to 100k */ }
+      const gasPrice = _capGasPrice(BigInt(gasPriceHex));
+      const tx = ethers.Transaction.from({
+        to: t.address, data,
+        nonce: parseInt(nonceHex, 16), gasPrice,
+        gasLimit, chainId: 1,
+      });
+      return rpcCall('eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
     });
-    return rpcCall('eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
   }
 
   // BIP39 passphrase ("25th word"), pulled from app state at derive time.
@@ -139,25 +155,27 @@ const EthereumWallet = (() => {
     return { address: legacy.address, privateKey: legacy.privateKey };
   }
 
-  async function sweepLegacy(mnemonic) {
-    const { address: legacyAddr, privateKey } = await deriveLegacyAddress(mnemonic);
-    const currentAddr = await deriveAddress(mnemonic);
-    const balHex = await rpcCall('eth_getBalance', [legacyAddr, 'latest']);
-    const balWei = BigInt(balHex);
-    const gasPriceHex = await rpcCall('eth_gasPrice', []);
-    const gasPrice = _capGasPrice(BigInt(gasPriceHex));
-    const gasLimit = 21000n;
-    const gasCost = gasPrice * gasLimit;
-    if (balWei <= gasCost) throw new Error('Balance too low to cover gas fee');
-    const valueWei = balWei - gasCost;
-    const nonceHex = await rpcCall('eth_getTransactionCount', [legacyAddr, 'pending']);
-    const wallet = new ethers.Wallet(privateKey);
-    const tx = ethers.Transaction.from({
-      to: currentAddr, value: valueWei,
-      nonce: parseInt(nonceHex, 16), gasPrice,
-      gasLimit: 21000, chainId: 1,
+  function sweepLegacy(mnemonic) {
+    return _withSendLock(async () => {
+      const { address: legacyAddr, privateKey } = await deriveLegacyAddress(mnemonic);
+      const currentAddr = await deriveAddress(mnemonic);
+      const balHex = await rpcCall('eth_getBalance', [legacyAddr, 'latest']);
+      const balWei = BigInt(balHex);
+      const gasPriceHex = await rpcCall('eth_gasPrice', []);
+      const gasPrice = _capGasPrice(BigInt(gasPriceHex));
+      const gasLimit = 21000n;
+      const gasCost = gasPrice * gasLimit;
+      if (balWei <= gasCost) throw new Error('Balance too low to cover gas fee');
+      const valueWei = balWei - gasCost;
+      const nonceHex = await rpcCall('eth_getTransactionCount', [legacyAddr, 'pending']);
+      const wallet = new ethers.Wallet(privateKey);
+      const tx = ethers.Transaction.from({
+        to: currentAddr, value: valueWei,
+        nonce: parseInt(nonceHex, 16), gasPrice,
+        gasLimit: 21000, chainId: 1,
+      });
+      return rpcCall('eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
     });
-    return rpcCall('eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
   }
 
   return { getETHBalance, getTokenBalance, estimateFee, sendETH, sendToken, deriveAddress, derivePrivateKey, deriveLegacyAddress, sweepLegacy };

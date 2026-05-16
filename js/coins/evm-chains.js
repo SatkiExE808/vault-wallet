@@ -139,49 +139,65 @@ const EVMChains = (() => {
     };
   }
 
-  async function sendNative(mnemonic, chainKey, to, amt) {
-    const wallet = new ethers.Wallet(await _privateKey(mnemonic));
-    const [nonceHex, gasPriceHex] = await Promise.all([
-      rpc(chainKey, 'eth_getTransactionCount', [wallet.address, 'pending']),
-      rpc(chainKey, 'eth_gasPrice', []),
-    ]);
-    const gasPrice = _capGasPrice(chainKey, BigInt(gasPriceHex));
-    const tx = ethers.Transaction.from({
-      to, value: ethers.parseEther(String(amt)),
-      nonce: parseInt(nonceHex, 16), gasPrice,
-      gasLimit: 21000, chainId: CHAIN_IDS[chainKey],
-    });
-    return rpc(chainKey, 'eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
+  // Per-chain send mutex (M5). Two rapid sends on the same chain would
+  // both fetch nonce 'pending' and broadcast against the same slot, the
+  // second tx silently replacing the first. Different chains use
+  // different keys so parallel sends across chains aren't blocked.
+  const _chainLocks = Object.create(null);
+  function _withChainLock(chainKey, fn) {
+    const prev = _chainLocks[chainKey] || Promise.resolve();
+    const run = prev.then(fn, fn);
+    _chainLocks[chainKey] = run.catch(() => {});
+    return run;
   }
 
-  async function sendToken(mnemonic, tokenKey, to, amt) {
-    const t = TOKEN[tokenKey];
-    const wallet = new ethers.Wallet(await _privateKey(mnemonic));
-    const data = new ethers.Interface(['function transfer(address,uint256)']).encodeFunctionData(
-      'transfer', [to, ethers.parseUnits(String(amt), t.dec)]
-    );
-    const [nonceHex, gasPriceHex] = await Promise.all([
-      rpc(t.chain, 'eth_getTransactionCount', [wallet.address, 'pending']),
-      rpc(t.chain, 'eth_gasPrice', []),
-    ]);
-    // Estimate real gas cost instead of hardcoding 100k — some L2 token
-    // transfers (especially USDT with hooks or chains with complex
-    // approvals) need more, hardcoding made them silently underpay.
-    let gasLimit = 100000n;
-    try {
-      const est = await rpc(t.chain, 'eth_estimateGas', [{
-        from: wallet.address, to: t.addr, data,
-      }]);
-      // Add 20% buffer for safety vs simulated estimate.
-      gasLimit = BigInt(est) * 12n / 10n;
-    } catch { /* fall back to 100k */ }
-    const gasPrice = _capGasPrice(t.chain, BigInt(gasPriceHex));
-    const tx = ethers.Transaction.from({
-      to: t.addr, data,
-      nonce: parseInt(nonceHex, 16), gasPrice,
-      gasLimit, chainId: CHAIN_IDS[t.chain],
+  function sendNative(mnemonic, chainKey, to, amt) {
+    return _withChainLock(chainKey, async () => {
+      const wallet = new ethers.Wallet(await _privateKey(mnemonic));
+      const [nonceHex, gasPriceHex] = await Promise.all([
+        rpc(chainKey, 'eth_getTransactionCount', [wallet.address, 'pending']),
+        rpc(chainKey, 'eth_gasPrice', []),
+      ]);
+      const gasPrice = _capGasPrice(chainKey, BigInt(gasPriceHex));
+      const tx = ethers.Transaction.from({
+        to, value: ethers.parseEther(String(amt)),
+        nonce: parseInt(nonceHex, 16), gasPrice,
+        gasLimit: 21000, chainId: CHAIN_IDS[chainKey],
+      });
+      return rpc(chainKey, 'eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
     });
-    return rpc(t.chain, 'eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
+  }
+
+  function sendToken(mnemonic, tokenKey, to, amt) {
+    const t = TOKEN[tokenKey];
+    return _withChainLock(t.chain, async () => {
+      const wallet = new ethers.Wallet(await _privateKey(mnemonic));
+      const data = new ethers.Interface(['function transfer(address,uint256)']).encodeFunctionData(
+        'transfer', [to, ethers.parseUnits(String(amt), t.dec)]
+      );
+      const [nonceHex, gasPriceHex] = await Promise.all([
+        rpc(t.chain, 'eth_getTransactionCount', [wallet.address, 'pending']),
+        rpc(t.chain, 'eth_gasPrice', []),
+      ]);
+      // Estimate real gas cost instead of hardcoding 100k — some L2 token
+      // transfers (especially USDT with hooks or chains with complex
+      // approvals) need more, hardcoding made them silently underpay.
+      let gasLimit = 100000n;
+      try {
+        const est = await rpc(t.chain, 'eth_estimateGas', [{
+          from: wallet.address, to: t.addr, data,
+        }]);
+        // Add 20% buffer for safety vs simulated estimate.
+        gasLimit = BigInt(est) * 12n / 10n;
+      } catch { /* fall back to 100k */ }
+      const gasPrice = _capGasPrice(t.chain, BigInt(gasPriceHex));
+      const tx = ethers.Transaction.from({
+        to: t.addr, data,
+        nonce: parseInt(nonceHex, 16), gasPrice,
+        gasLimit, chainId: CHAIN_IDS[t.chain],
+      });
+      return rpc(t.chain, 'eth_sendRawTransaction', [await wallet.signTransaction(tx)]);
+    });
   }
 
   return { deriveAddress, getNative, getToken, estimateFee, sendNative, sendToken };
