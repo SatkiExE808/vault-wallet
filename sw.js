@@ -45,14 +45,20 @@ self.addEventListener('install', e => {
   e.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE);
-      const fetches = LOCAL_FILES.map(async url => {
-        try {
-          const r = await fetch(url, { cache: 'no-store' });
-          if (r && r.status === 200) await cache.put(url, r);
-        } catch {}
-      });
-      await Promise.allSettled(fetches);
-      // Icons are optional — same no-store rule, don't fail install if missing.
+      // Critical bundle files must all install atomically — previously
+      // Promise.allSettled meant a single 404/network blip could leave
+      // the new cache key opened with a *mix* of new + old files, then
+      // the SW would activate and serve a hybrid that doesn't match
+      // any known build. Now any failure aborts the install: the next
+      // page load retries from scratch, the old cache stays in service.
+      await Promise.all(LOCAL_FILES.map(async url => {
+        const r = await fetch(url, { cache: 'no-store' });
+        if (!r || r.status !== 200) throw new Error(`SW install: ${url} → ${r ? r.status : 'no response'}`);
+        await cache.put(url, r);
+      }));
+      // Icons are still best-effort — missing icons don't break the app
+      // and a tight check would lock out devices that throttle the
+      // png fetch.
       await Promise.allSettled(['./icons/icon-192.png', './icons/icon-512.png'].map(async url => {
         try {
           const r = await fetch(url, { cache: 'no-store' });
