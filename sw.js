@@ -93,12 +93,19 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const req = e.request;
   const sameOrigin = new URL(req.url).origin === self.location.origin;
-  const opts = (sameOrigin && req.method === 'GET') ? { cache: 'no-store' } : undefined;
+  const cacheable = sameOrigin && req.method === 'GET';
+  const opts = cacheable ? { cache: 'no-store' } : undefined;
   e.respondWith(
     (opts ? fetch(req, opts) : fetch(req))
       .then(res => {
-        // Only cache successful same-origin responses + cross-origin OK responses
-        if (res && res.status === 200 && res.type !== 'opaqueredirect') {
+        // Only cache same-origin GETs. Caching cross-origin 200s would
+        // mean one MITM/compromised CDN response can persist forever in
+        // the offline cache — pinning every CDN bundle with SRI helps
+        // on the page load, but the SW cache stores the raw bytes and
+        // would replay them after the next network outage. Same-origin
+        // assets (./js/*, ./lib/*) are signed by the same source that
+        // shipped this SW.
+        if (cacheable && res && res.status === 200 && res.type === 'basic') {
           const clone = res.clone();
           caches.open(CACHE).then(c => c.put(req, clone)).catch(() => {});
         }
