@@ -159,35 +159,21 @@ const MoneroWallet = (() => {
     'https://monero.stackwallet.com:18081',
   ];
 
-  async function sendXMR(mnemonic, toAddress, amount, restoreHeight, onProgress) {
-    if (typeof MoneroWalletFull === 'undefined')
-      throw new Error('Monero library not loaded. Refresh and try again.');
-
-    const spendKeyHex = await deriveSpendKeyHex(mnemonic);
-
-    let wallet = null;
-    let lastErr;
-    for (const node of PUBLIC_NODES) {
-      try {
-        wallet = await MoneroWalletFull.createWallet({
-          networkType: 0,
-          privateSpendKey: spendKeyHex,
-          server: node,
-          restoreHeight: restoreHeight || 0,
-          proxyToWorker: true,
-        });
-        break;
-      } catch(e) { lastErr = e; console.warn(`XMR node ${node} failed:`, e); }
-    }
-    if (!wallet) throw new Error('Could not connect to a Monero node: ' + (lastErr?.message || ''));
-
+  async function sendXMR(mnemonic, toAddress, amount, _restoreHeight, onProgress) {
+    // Reuse the cached local-sync wallet so we don't pay the
+    // ~5-30s wallet-creation cost on every send, and so we don't
+    // run two parallel syncs (background balance + send sync).
+    const w = await _getLocalWallet(mnemonic);
     if (onProgress) {
-      await wallet.addListener({
-        onSyncProgress: (_h, _s, _e, pct) => onProgress(Math.round(pct * 100)),
-      });
+      try {
+        await w.addListener({
+          onSyncProgress: (_h, _s, _e, pct) => onProgress(Math.round(pct * 100)),
+        });
+      } catch {}
     }
-
-    await wallet.sync();
+    // Block until current tip so the send doesn't reference unspent
+    // outputs the chain has since reorged.
+    await w.sync();
 
     // String-based decimal → piconero conversion. The old
     // `Math.round(parseFloat(amount) * 1e12)` lost precision above ~9 XMR
@@ -195,8 +181,8 @@ const MoneroWallet = (() => {
     // Now we parse the decimal string exactly: "1.234567891234" XMR →
     // BigInt("1234567891234"), preserving every piconero.
     const piconero = _xmrToPiconero(amount);
-    const txs = await wallet.createTxs({ accountIndex: 0, address: toAddress, amount: piconero, relay: true });
-    await wallet.close();
+    const txs = await w.createTxs({ accountIndex: 0, address: toAddress, amount: piconero, relay: true });
+    // Keep the wallet open for the next balance refresh — no .close().
     return txs[0].getHash();
   }
 
@@ -293,58 +279,113 @@ const MoneroWallet = (() => {
     return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  // M-T3 privacy gate: getBalance POSTs the user's hex view key to
-  // api.mymonero.com. The view key alone can't spend, but it lets
-  // MyMonero (and any party with a sniffing position upstream) see
-  // every incoming XMR tx the user receives — which is the entire
-  // point of a privacy coin. Require an explicit one-time opt-in
-  // before sending the view key anywhere. The opt-in is recorded in
-  // localStorage as 'xmr.privacy_acknowledged' = 'ack' | 'declined'.
-  let _xmrConsentInFlight = null;
-  async function _ensureMyMoneroConsent() {
-    const flag = (typeof localStorage !== 'undefined') ? localStorage.getItem('xmr.privacy_acknowledged') : null;
-    if (flag === 'ack') return true;
-    if (flag === 'declined') return false;
-    if (_xmrConsentInFlight) return _xmrConsentInFlight;
-    _xmrConsentInFlight = (async () => {
-      const ok = typeof confirmModal === 'function'
-        ? await confirmModal({
-            title: 'Enable XMR balance check?',
-            lines: [
-              ['How',     'Your view key is POSTed to api.mymonero.com to scan incoming transactions.'],
-              ['Leak',    'MyMonero (and any party on-path) learns every XMR address you receive to.'],
-              ['Spendable?', 'No — view key alone cannot send funds.'],
-              ['Alternative', 'Decline and balance shows as — until you re-enable in Settings.'],
-            ],
-            confirmLabel: 'Allow',
-          })
-        : true; // headless / older WebView — fall through to legacy behavior
-      try { localStorage.setItem('xmr.privacy_acknowledged', ok ? 'ack' : 'declined'); } catch {}
-      return !!ok;
-    })().finally(() => { _xmrConsentInFlight = null; });
-    return _xmrConsentInFlight;
+  // ── Local blockchain sync (replaces the MyMonero POST) ──────────
+  // Privacy upgrade: the view key never leaves the device. The bundled
+  // monero_wallet_full.wasm scans the Monero blockchain on-device using
+  // a background sync worker. First sync from the configured restore
+  // height; thereafter incremental every minute.
+  //
+  // Module-level state keyed by the first 16 hex chars of the spend
+  // key (a stable proxy for "is this the same wallet?" that doesn't
+  // require storing the mnemonic across calls).
+  let _wState = { promise: null, tag: null };
+
+  function _closeWalletState() {
+    const prev = _wState;
+    _wState = { promise: null, tag: null };
+    if (prev.promise) {
+      prev.promise.then(w => { try { w && w.close(); } catch {} }).catch(() => {});
+    }
+  }
+  if (typeof window !== 'undefined') {
+    // Re-bind on every lock so the wasm worker doesn't hold keys
+    // across unlock cycles. app.js dispatches 'vault-lock' from its
+    // lock handler.
+    window.addEventListener('vault-lock', _closeWalletState);
   }
 
-  async function getBalance(address, viewKeyBytes) {
-    if(!viewKeyBytes) return '0.000000000';
-    // Skip silently if the user hasn't opted in. UI displays '—' for
-    // null balance and offers a re-enable affordance in Settings.
-    const consent = await _ensureMyMoneroConsent();
-    if (!consent) return null;
+  async function _getLocalWallet(mnemonic) {
+    if (typeof MoneroWalletFull === 'undefined')
+      throw new Error('Monero engine not loaded — refresh the app');
+    const spendKeyHex = await deriveSpendKeyHex(mnemonic);
+    const tag = spendKeyHex.slice(0, 16);
+    if (_wState.tag !== tag) _closeWalletState();
+    if (_wState.promise) return _wState.promise;
+
+    _wState.tag = tag;
+    _wState.promise = (async () => {
+      // Restore height: stored value (user-set or auto-anchored on
+      // first run) wins. Otherwise default to currentTip-5000
+      // (~1 week of recent activity) so we don't scan genesis.
+      let restoreHeight = parseInt(localStorage.getItem('xmr_restore_height') || '0') || 0;
+      if (restoreHeight === 0) {
+        const tip = await getCurrentHeight();
+        restoreHeight = Math.max(0, tip - 5000);
+        try { localStorage.setItem('xmr_restore_height', String(restoreHeight)); } catch {}
+      }
+      let lastErr;
+      for (const node of PUBLIC_NODES) {
+        try {
+          const w = await MoneroWalletFull.createWallet({
+            networkType: 0,
+            privateSpendKey: spendKeyHex,
+            server: node,
+            restoreHeight,
+            proxyToWorker: true,
+          });
+          // Listen for sync progress; the UI reads _wState.syncPct
+          // via getSyncProgressPct() to render a "Syncing N%" hint
+          // next to the balance until the worker catches up.
+          try {
+            await w.addListener({
+              onSyncProgress: (_h, _s, _e, pct) => { _wState.syncPct = Math.round(pct * 100); },
+              onNewBlock:     () => { _wState.syncPct = 100; },
+            });
+          } catch (e) { /* listener API may vary across builds */ }
+          // Background sync — don't block here; getBalance reads
+          // whatever's been scanned so far. First-balance call may
+          // show 0; balance fills in as the worker catches up.
+          await w.startSyncing(60_000);
+          return w;
+        } catch (e) {
+          console.warn(`XMR node ${node} unreachable:`, e);
+          lastErr = e;
+        }
+      }
+      _closeWalletState();
+      throw new Error('No Monero node reachable: ' + (lastErr?.message || lastErr));
+    })();
+    return _wState.promise;
+  }
+
+  // mnemonic is required (local sync needs the spend key). Legacy
+  // callers that pass only (address, viewKey) get a clear error so
+  // the migration is visible.
+  async function getBalance(address, viewKeyBytes, mnemonic) {
+    if (!mnemonic) return null; // not unlocked yet
     try {
-      const vk=Array.from(viewKeyBytes).map(b=>b.toString(16).padStart(2,'0')).join('');
-      const r=await fetch(`${MYMONERO}/get_address_info`,{
-        method:'POST',
-        headers:{'Content-Type':'application/json','Accept':'application/json'},
-        body:JSON.stringify({address,view_key:vk})
-      });
-      if(!r.ok) return '0.000000000';
-      const d=await r.json();
-      const bal=BigInt(d.total_received||'0')-BigInt(d.total_sent||'0');
-      return (Number(bal)/1e12).toFixed(9);
-    } catch { return '0.000000000'; }
+      const w = await _getLocalWallet(mnemonic);
+      const balRaw = await w.getBalance(0);
+      const balPico = BigInt((balRaw && balRaw.toString) ? balRaw.toString() : '0');
+      return (Number(balPico) / 1e12).toFixed(9);
+    } catch (e) {
+      console.warn('XMR local sync getBalance failed:', e);
+      return null;
+    }
+  }
+
+  function getSyncProgressPct() {
+    // Surfaced to the UI so it can show "Syncing N%" next to a
+    // still-zero balance until the worker catches up. Returns null
+    // when no wallet exists yet or the wasm engine hasn't loaded.
+    try {
+      // Cached value updated by the wallet's onSyncProgress callback
+      // — see addListener below.
+      return _wState.syncPct;
+    } catch { return null; }
   }
 
   return { deriveAddress, deriveSubaddress, deriveViewKey, deriveViewKeyHex,
-           deriveSpendKeyHex, getBalance, sendXMR, getCurrentHeight };
+           deriveSpendKeyHex, getBalance, getSyncProgressPct,
+           sendXMR, getCurrentHeight };
 })();

@@ -487,7 +487,10 @@ const COINS = [
     id: 'XMR', name: 'Monero', symbol: 'XMR', category: 'Monero',
     icon: `${CDN}/xmr.svg`, color: '#ff6600', networkLabel: 'Stealth', networkClass: 'network-xmr',
     derive:  m    => MoneroWallet.deriveAddress(m),
-    balance: async (addr, extra) => MoneroWallet.getBalance(addr, extra?.viewKey),
+    // Local sync — view key never leaves the device. mnemonic is
+    // passed through so the wasm wallet can be lazily created on
+    // first balance fetch.
+    balance: async (addr, extra) => MoneroWallet.getBalance(addr, extra?.viewKey, state.mnemonic),
     extra:      async m => ({ viewKey: await MoneroWallet.deriveViewKey(m) }),
     exportKeys: async m => ({
       spendKey: await MoneroWallet.deriveSpendKeyHex(m),
@@ -2151,6 +2154,10 @@ document.getElementById('lock-btn').onclick = async () => {
   clearFeeTimer();
   if (typeof TxProgress !== 'undefined') TxProgress.stop();
   if (typeof AaveEarn !== 'undefined') AaveEarn.stopApyRefresh();
+  // Signal modules that hold long-lived secret-bound resources (the
+  // Monero local-sync worker holds the spend key) to tear down before
+  // we drop the mnemonic from memory.
+  window.dispatchEvent(new Event('vault-lock'));
   state.mnemonic = null;
   state.passphrase = '';   // separate secret from the mnemonic — wipe too
   // Wipe ALL session state so prices / aave APYs / addresses from this
