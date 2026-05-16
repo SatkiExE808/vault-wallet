@@ -240,8 +240,44 @@ const MoneroWallet = (() => {
     return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
+  // M-T3 privacy gate: getBalance POSTs the user's hex view key to
+  // api.mymonero.com. The view key alone can't spend, but it lets
+  // MyMonero (and any party with a sniffing position upstream) see
+  // every incoming XMR tx the user receives — which is the entire
+  // point of a privacy coin. Require an explicit one-time opt-in
+  // before sending the view key anywhere. The opt-in is recorded in
+  // localStorage as 'xmr.privacy_acknowledged' = 'ack' | 'declined'.
+  let _xmrConsentInFlight = null;
+  async function _ensureMyMoneroConsent() {
+    const flag = (typeof localStorage !== 'undefined') ? localStorage.getItem('xmr.privacy_acknowledged') : null;
+    if (flag === 'ack') return true;
+    if (flag === 'declined') return false;
+    if (_xmrConsentInFlight) return _xmrConsentInFlight;
+    _xmrConsentInFlight = (async () => {
+      const ok = typeof confirmModal === 'function'
+        ? await confirmModal({
+            title: 'Enable XMR balance check?',
+            lines: [
+              ['How',     'Your view key is POSTed to api.mymonero.com to scan incoming transactions.'],
+              ['Leak',    'MyMonero (and any party on-path) learns every XMR address you receive to.'],
+              ['Spendable?', 'No — view key alone cannot send funds.'],
+              ['Alternative', 'Decline and balance shows as — until you re-enable in Settings.'],
+            ],
+            confirmLabel: 'Allow',
+          })
+        : true; // headless / older WebView — fall through to legacy behavior
+      try { localStorage.setItem('xmr.privacy_acknowledged', ok ? 'ack' : 'declined'); } catch {}
+      return !!ok;
+    })().finally(() => { _xmrConsentInFlight = null; });
+    return _xmrConsentInFlight;
+  }
+
   async function getBalance(address, viewKeyBytes) {
     if(!viewKeyBytes) return '0.000000000';
+    // Skip silently if the user hasn't opted in. UI displays '—' for
+    // null balance and offers a re-enable affordance in Settings.
+    const consent = await _ensureMyMoneroConsent();
+    if (!consent) return null;
     try {
       const vk=Array.from(viewKeyBytes).map(b=>b.toString(16).padStart(2,'0')).join('');
       const r=await fetch(`${MYMONERO}/get_address_info`,{
