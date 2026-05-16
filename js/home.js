@@ -583,9 +583,9 @@
       selectCoin(coin.id);
       try {
         if (!coin.history) {
-          const url = coin.explorerAddr ? coin.explorerAddr(state.addresses[coin.id]) : '';
-          histDiv.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:8px 0">History not available for ${coin.name}.</p>
-            ${url ? `<button class="btn btn-outline btn-sm wd-explorer-btn" data-url="${url}" style="margin-top:6px">View address on explorer ↗</button>` : ''}`;
+          const url = safeUrl(coin.explorerAddr ? coin.explorerAddr(state.addresses[coin.id]) : '');
+          histDiv.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:8px 0">History not available for ${escapeHtml(coin.name)}.</p>
+            ${url ? `<button class="btn btn-outline btn-sm wd-explorer-btn" data-url="${escapeHtml(url)}" style="margin-top:6px">View address on explorer ↗</button>` : ''}`;
         } else {
           // Multi-address coins: pass full address list so history shows
           // txs from every derived index (BTC / LTC / DOGE).
@@ -594,9 +594,9 @@
             : state.addresses[coin.id];
           const txs = await coin.history(histTarget);
           if (!txs || txs.length === 0) {
-            const url = coin.explorerAddr ? coin.explorerAddr(state.addresses[coin.id]) : '';
+            const url = safeUrl(coin.explorerAddr ? coin.explorerAddr(state.addresses[coin.id]) : '');
             histDiv.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:8px 0">No transactions yet.</p>
-              ${url ? `<button class="btn btn-outline btn-sm wd-explorer-btn" data-url="${url}" style="margin-top:6px">View on explorer ↗</button>` : ''}`;
+              ${url ? `<button class="btn btn-outline btn-sm wd-explorer-btn" data-url="${escapeHtml(url)}" style="margin-top:6px">View on explorer ↗</button>` : ''}`;
           } else {
             // Tinted icon + verb based on tx.kind (set by coin modules
             // that classify their history). Falls back to plain
@@ -622,7 +622,7 @@
             histDiv.innerHTML = txs.map(tx => {
               const send = tx.type === 'send';
               const time = tx.time ? timeAgo(tx.time) : 'Pending';
-              const url  = tx.explorerUrl || '';
+              const url  = safeUrl(tx.explorerUrl);
               const st   = tx.status || (tx.confirmed ? 'ok' : 'pending');
               const kind = tx.kind || (send ? 'send' : 'receive');
               const lbl  = TX_LABELS[kind] || TX_LABELS[send ? 'send' : 'receive'];
@@ -634,20 +634,20 @@
                   justify-content:center;font-size:14px;
                   background:${tint.bg};color:${tint.fg}">${lbl.icon}</div>
                 <div style="flex:1;min-width:0">
-                  <div style="font-size:13px;font-weight:600">${lbl.verb} ${tx.amount} ${coin.symbol}</div>
+                  <div style="font-size:13px;font-weight:600">${lbl.verb} ${escapeHtml(tx.amount)} ${escapeHtml(coin.symbol)}</div>
                   <div style="font-size:11px;color:var(--text2);margin-top:2px">
                     <span>${time}</span>
                     <span style="color:${stColor};margin-left:6px">• ${stLabel}</span>
                   </div>
                 </div>
-                ${url ? `<button class="btn btn-outline btn-sm wd-explorer-btn" data-url="${url}"
+                ${url ? `<button class="btn btn-outline btn-sm wd-explorer-btn" data-url="${escapeHtml(url)}"
                   style="padding:5px 9px;font-size:11px;flex-shrink:0">↗</button>` : ''}
               </div>`;
             }).join('');
           }
         }
       } catch (e) {
-        histDiv.innerHTML = `<p style="color:var(--red);font-size:13px;padding:8px 0">Failed: ${e.message}</p>`;
+        histDiv.innerHTML = `<p style="color:var(--red);font-size:13px;padding:8px 0">Failed: ${escapeHtml(e.message)}</p>`;
       }
       histDiv.querySelectorAll('.wd-explorer-btn').forEach(btn => {
         btn.onclick = () => openExternal(btn.dataset.url);

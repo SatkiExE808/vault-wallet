@@ -6,6 +6,19 @@ function escapeHtml(s) {
   ));
 }
 
+// URL-scheme allowlist for anything that ends up in an href, data-url
+// attribute, or window.open() call. Returns '' for javascript:, data:,
+// vbscript:, file:, blob: etc. — only http(s) URLs survive.
+function safeUrl(u) {
+  if (!u) return '';
+  try {
+    const p = new URL(String(u));
+    if (p.protocol === 'https:' || p.protocol === 'http:') return p.href;
+  } catch {}
+  return '';
+}
+window.safeUrl = safeUrl;
+
 // Custom confirm dialog — drop-in replacement for the browser-native
 // confirm(), which on Android/iOS WebViews renders as an OS pop-up that
 // clashes with the wallet's dark theme. Pass a `lines` array of
@@ -991,7 +1004,7 @@ async function completeSetup(mnemonic, restoreHeight, password, passphrase = '')
     state.mnemonic = mnemonic;
     await loadWallet();
   } catch(e) {
-    box.innerHTML = `<h1>Error</h1><p style="color:var(--red);margin-top:8px">${e.message}</p><button class="btn btn-outline" onclick="showSetup()" style="margin-top:16px;width:100%">Back</button>`;
+    box.innerHTML = `<h1>Error</h1><p style="color:var(--red);margin-top:8px">${escapeHtml(e.message)}</p><button class="btn btn-outline" onclick="showSetup()" style="margin-top:16px;width:100%">Back</button>`;
   }
 }
 
@@ -1478,17 +1491,21 @@ function timeAgo(ms) {
 // browser, so we explicitly use window.open with the _system target which
 // Capacitor's intent handler picks up.
 function openExternal(url) {
-  if (!url) return;
+  // Reject anything that isn't http(s) — a tainted explorer URL like
+  // `javascript:fetch(...)` would otherwise execute in the wallet origin
+  // via the window.open fallback branch.
+  const safe = safeUrl(url);
+  if (!safe) return;
   try {
     if (window.Capacitor?.Plugins?.Browser?.open) {
-      window.Capacitor.Plugins.Browser.open({ url });
+      window.Capacitor.Plugins.Browser.open({ url: safe });
       return;
     }
   } catch {}
   // Fallback: plain window.open. _system is a Cordova convention; modern
   // browsers ignore it and just open in a new tab/window.
-  const w = window.open(url, '_system');
-  if (!w) window.open(url, '_blank');
+  const w = window.open(safe, '_system');
+  if (!w) window.open(safe, '_blank');
 }
 window.openExternal = openExternal;
 
@@ -1498,10 +1515,10 @@ async function updateHistoryTab() {
   if (!list) return;
 
   if (!coin.history) {
-    const url = coin.explorerAddr ? coin.explorerAddr(state.addresses[coin.id]) : '';
+    const url = safeUrl(coin.explorerAddr ? coin.explorerAddr(state.addresses[coin.id]) : '');
     list.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:12px 0">
-      History not available for ${coin.name}.</p>
-      ${url ? `<button class="btn btn-outline btn-sm explorer-btn" data-url="${url}" style="margin-top:6px">View address on explorer ↗</button>` : ''}`;
+      History not available for ${escapeHtml(coin.name)}.</p>
+      ${url ? `<button class="btn btn-outline btn-sm explorer-btn" data-url="${escapeHtml(url)}" style="margin-top:6px">View address on explorer ↗</button>` : ''}`;
     list.querySelectorAll('.explorer-btn').forEach(btn => btn.onclick = () => openExternal(btn.dataset.url));
     return;
   }
@@ -1516,9 +1533,9 @@ async function updateHistoryTab() {
       : addr;
     const txs  = await coin.history(target);
     if (!txs || txs.length === 0) {
-      const url = coin.explorerAddr ? coin.explorerAddr(addr) : '';
+      const url = safeUrl(coin.explorerAddr ? coin.explorerAddr(addr) : '');
       list.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:12px 0">No transactions found.</p>
-        ${url ? `<button class="btn btn-outline btn-sm explorer-btn" data-url="${url}" style="margin-top:6px">View on explorer ↗</button>` : ''}`;
+        ${url ? `<button class="btn btn-outline btn-sm explorer-btn" data-url="${escapeHtml(url)}" style="margin-top:6px">View on explorer ↗</button>` : ''}`;
       list.querySelectorAll('.explorer-btn').forEach(btn => btn.onclick = () => openExternal(btn.dataset.url));
       return;
     }
@@ -1572,7 +1589,7 @@ async function updateHistoryTab() {
              background:rgba(234,179,8,0.15);color:#eab308">Pending</span>`
         : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600;
              background:rgba(34,197,94,0.15);color:#22c55e">Completed</span>`;
-      const url = escapeHtml(tx.explorerUrl || '');
+      const url = escapeHtml(safeUrl(tx.explorerUrl));
       return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
         <div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
           justify-content:center;font-size:15px;
@@ -1600,10 +1617,10 @@ async function updateHistoryTab() {
       btn.onclick = () => openExternal(btn.dataset.url);
     });
   } catch(e) {
-    const url = coin.explorerAddr ? coin.explorerAddr(state.addresses[coin.id]) : '';
+    const url = safeUrl(coin.explorerAddr ? coin.explorerAddr(state.addresses[coin.id]) : '');
     list.innerHTML = `<p style="color:var(--text2);font-size:13px;padding:12px 0">
-      Could not load history: ${e.message}</p>
-      ${url ? `<button class="btn btn-outline btn-sm explorer-btn" data-url="${url}" style="margin-top:6px">View on explorer ↗</button>` : ''}`;
+      Could not load history: ${escapeHtml(e.message)}</p>
+      ${url ? `<button class="btn btn-outline btn-sm explorer-btn" data-url="${escapeHtml(url)}" style="margin-top:6px">View on explorer ↗</button>` : ''}`;
     list.querySelectorAll('.explorer-btn').forEach(btn => btn.onclick = () => openExternal(btn.dataset.url));
   }
 }
@@ -1996,17 +2013,17 @@ async function loadLegacyRecovery() {
     const balNum = parseFloat(bal);
     const shortAddr = `${legacyAddr.slice(0, 10)}…${legacyAddr.slice(-8)}`;
     if (balNum <= 0) {
-      area.innerHTML = `<span style="color:var(--text2)">Legacy address <code style="font-size:11px">${shortAddr}</code> — no ETH found.</span>`;
+      area.innerHTML = `<span style="color:var(--text2)">Legacy address <code style="font-size:11px">${escapeHtml(shortAddr)}</code> — no ETH found.</span>`;
       return;
     }
     area.innerHTML = `
       <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;margin-bottom:10px">
         <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Legacy address</div>
-        <code style="font-size:11px;word-break:break-all">${legacyAddr}</code>
+        <code style="font-size:11px;word-break:break-all">${escapeHtml(legacyAddr)}</code>
       </div>
-      <div style="font-size:14px;font-weight:600;margin-bottom:10px;color:#f97316">Found: ${bal} ETH</div>
+      <div style="font-size:14px;font-weight:600;margin-bottom:10px;color:#f97316">Found: ${escapeHtml(bal)} ETH</div>
       <button class="btn btn-primary btn-sm" id="sweep-legacy-btn" style="width:100%">
-        Sweep ${bal} ETH → current wallet
+        Sweep ${escapeHtml(bal)} ETH → current wallet
       </button>`;
     document.getElementById('sweep-legacy-btn').onclick = async () => {
       const btn = document.getElementById('sweep-legacy-btn');
@@ -2017,7 +2034,7 @@ async function loadLegacyRecovery() {
       btn.disabled = true; btn.textContent = 'Sending…';
       try {
         const txid = await EthereumWallet.sweepLegacy(state.mnemonic);
-        area.innerHTML = `<div style="color:#22c55e;font-size:13px">Swept! TX: ${String(txid).slice(0, 22)}…<br><span style="color:var(--text2);font-size:12px">ETH balance will update shortly.</span></div>`;
+        area.innerHTML = `<div style="color:#22c55e;font-size:13px">Swept! TX: ${escapeHtml(String(txid).slice(0, 22))}…<br><span style="color:var(--text2);font-size:12px">ETH balance will update shortly.</span></div>`;
         setTimeout(refreshBalances, 15000);
       } catch(e) {
         btn.disabled = false; btn.textContent = `Sweep ${bal} ETH → current wallet`;
@@ -2026,7 +2043,7 @@ async function loadLegacyRecovery() {
     };
   } catch(e) {
     const el = document.getElementById('legacy-recovery-area');
-    if (el) el.innerHTML = `<span style="color:var(--text2);font-size:12px">Error: ${e.message}</span>`;
+    if (el) el.innerHTML = `<span style="color:var(--text2);font-size:12px">Error: ${escapeHtml(e.message)}</span>`;
   }
 }
 
