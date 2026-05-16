@@ -209,8 +209,42 @@ const SolanaWallet = (() => {
       return Array.isArray(arr) ? arr : [];
     } catch { return []; }
   }
+  // Defense-in-depth alongside C3's render-time escapeHtml: only keep
+  // known-safe fields with validated types/charsets before persisting
+  // an RPC-derived tx into localStorage. If a future regression drops
+  // the escapeHtml call on a render path, the cached payload still
+  // can't smuggle script content because attacker-controlled chars
+  // never reached storage in the first place.
+  const _VALID_KINDS  = new Set(['send','receive','stake','stake-withdraw','stake-manage','liquid-stake','liquid-unstake']);
+  const _VALID_STATUS = new Set(['ok','pending','error']);
+  function _sanitizeHistRow(tx) {
+    if (!tx || typeof tx !== 'object') return null;
+    // hash: base58 1-128 chars (Solana signature character set)
+    if (typeof tx.hash !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]{1,128}$/.test(tx.hash)) return null;
+    const out = { hash: tx.hash };
+    if (tx.type === 'send' || tx.type === 'receive') out.type = tx.type;
+    if (typeof tx.time === 'number' && Number.isFinite(tx.time))   out.time = tx.time;
+    if (typeof tx.confirmed === 'boolean')                          out.confirmed = tx.confirmed;
+    if (typeof tx.status === 'string' && _VALID_STATUS.has(tx.status)) out.status = tx.status;
+    if (typeof tx.kind   === 'string' && _VALID_KINDS.has(tx.kind))    out.kind   = tx.kind;
+    if (typeof tx.amount === 'string' && /^-?\d+(\.\d+)?$/.test(tx.amount)) out.amount = tx.amount;
+    else if (typeof tx.amount === 'number' && Number.isFinite(tx.amount))   out.amount = String(tx.amount);
+    if (typeof tx.errorMsg === 'string') {
+      out.errorMsg = tx.errorMsg.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 200);
+    }
+    if (typeof tx.explorerUrl === 'string') {
+      try {
+        const u = new URL(tx.explorerUrl);
+        if (u.protocol === 'https:' || u.protocol === 'http:') out.explorerUrl = u.href;
+      } catch {}
+    }
+    return out;
+  }
   function _writeHistoryCache(addr, rows) {
-    try { localStorage.setItem(_historyCacheKey(addr), JSON.stringify(rows)); } catch {}
+    try {
+      const safe = Array.isArray(rows) ? rows.map(_sanitizeHistRow).filter(Boolean) : [];
+      localStorage.setItem(_historyCacheKey(addr), JSON.stringify(safe));
+    } catch {}
   }
   async function getHistory(address) {
     try {
