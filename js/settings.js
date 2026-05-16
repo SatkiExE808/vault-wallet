@@ -611,7 +611,18 @@
       }
 
       if (remoteVer !== localVer) {
-        if (confirm(`Update available: ${localVer} → ${remoteVer}\n\nReload now?`)) {
+        const ok = typeof confirmModal === 'function'
+          ? await confirmModal({
+              title: 'Update Available',
+              lines: [
+                ['Current', localVer],
+                ['Latest',  remoteVer],
+                ['Action',  'Clear caches and reload the app.'],
+              ],
+              confirmLabel: 'Reload',
+            })
+          : confirm(`Update available: ${localVer} → ${remoteVer}\n\nReload now?`);
+        if (ok) {
           // Clear all caches so the new version is fetched fresh
           const keys = await caches.keys();
           await Promise.all(keys.map(k => caches.delete(k)));
@@ -702,7 +713,17 @@
       `, (root, close) => {
         root.querySelector('#ta-close').onclick = close;
         root.querySelector('#ta-disable').onclick = async () => {
-          if (!confirm('Turn off two-factor authentication?')) return;
+          const ok = typeof confirmModal === 'function'
+            ? await confirmModal({
+                title: 'Disable Two-Factor?',
+                lines: [
+                  ['Effect', 'Sends and other sensitive actions stop requiring a 6-digit code.'],
+                ],
+                confirmLabel: 'Disable 2FA',
+                danger: true,
+              })
+            : confirm('Turn off two-factor authentication?');
+          if (!ok) return;
           try { await verifyAuth('Disable two-factor'); }
           catch { return; }
           await window.TwoFA.disable();
