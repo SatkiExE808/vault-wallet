@@ -2,9 +2,16 @@
 // through SLIP-0010 instead of BIP32, but the Phantom-compatible BIP44
 // path m/44'/501'/0'/0' is otherwise standard.
 const SolanaWallet = (() => {
+  // Public Solana RPCs now reject requests carrying a browser Origin
+  // header (api.mainnet-beta returns 403, publicnode/ankr 403, OnFinality
+  // 429). The WebView always sends Origin: https://satkiexe808.github.io
+  // so every direct fetch fails. We proxy through vault.iamhch.com which
+  // strips the Origin and re-adds permissive CORS — same Solana mainnet
+  // backend, just without the CORS gauntlet.
   const RPCS = [
-    'https://solana-rpc.publicnode.com',
+    'https://vault.iamhch.com/_sol/rpc',
     'https://api.mainnet-beta.solana.com',
+    'https://solana-rpc.publicnode.com',
     'https://rpc.ankr.com/solana',
     'https://solana.api.onfinality.io/public',
   ];
@@ -683,6 +690,9 @@ const SolanaWallet = (() => {
     throw lastErr || new Error('All Jupiter endpoints failed');
   }
 
+  // Same caching pattern as native balance — public RPCs throttle so
+  // returning 0.000000 on every failure hid users' JupSOL balances.
+  function _jupSolCacheKey(addr) { return `vault.sol.jupSolBalance.${addr}`; }
   async function getJupSolBalance(address) {
     try {
       const res = await rpcCall('getTokenAccountsByOwner', [
@@ -695,8 +705,16 @@ const SolanaWallet = (() => {
       for (const a of accounts) {
         total += Number(a.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0);
       }
-      return total.toFixed(6);
-    } catch { return '0.000000'; }
+      const out = total.toFixed(6);
+      try { localStorage.setItem(_jupSolCacheKey(address), out); } catch {}
+      return out;
+    } catch {
+      try {
+        const cached = localStorage.getItem(_jupSolCacheKey(address));
+        if (cached) return cached;
+      } catch {}
+      return '0.000000';
+    }
   }
 
   // Returns SOL equivalent of 1 JupSOL via a quick Jupiter quote.
