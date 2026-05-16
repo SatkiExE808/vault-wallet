@@ -104,12 +104,32 @@ const SolanaWallet = (() => {
     throw lastErr || new Error('All Solana RPCs failed');
   }
 
+  // Per-address balance cache. Public Solana RPCs throttle so aggressively
+  // that returning 0.000000 on every failure has caused users to think
+  // their funds disappeared. We persist the last fetched balance and serve
+  // it as a fallback when the RPC blip persists.
+  function _balanceCacheKey(addr) { return `vault.sol.balance.${addr}`; }
+  function _readBalanceCache(addr) {
+    try {
+      const raw = localStorage.getItem(_balanceCacheKey(addr));
+      return raw == null ? null : raw;
+    } catch { return null; }
+  }
+  function _writeBalanceCache(addr, value) {
+    try { localStorage.setItem(_balanceCacheKey(addr), value); } catch {}
+  }
   async function getBalance(address) {
     try {
       const res = await rpcCall('getBalance', [address]);
       const lamports = (res && typeof res === 'object' ? res.value : res) || 0;
-      return (lamports / solanaWeb3.LAMPORTS_PER_SOL).toFixed(6);
-    } catch { return '0.000000'; }
+      const out = (lamports / solanaWeb3.LAMPORTS_PER_SOL).toFixed(6);
+      _writeBalanceCache(address, out);
+      return out;
+    } catch {
+      // RPC failure — show the last known balance rather than zeroing the
+      // UI. Fresh wallets with no cache still see 0.000000.
+      return _readBalanceCache(address) || '0.000000';
+    }
   }
 
   // Quick preflight that catches "polyfill didn't load" cases — the user's
@@ -307,6 +327,24 @@ const SolanaWallet = (() => {
   function forgetStakeAccount(address, stakePubkey) {
     if (!address || !stakePubkey) return;
     _writeStakeCache(address, _readStakeCache(address).filter(p => p !== stakePubkey));
+    _forgetStakeState(stakePubkey);
+  }
+
+  // Full stake-account state cache, keyed by stake pubkey. Lets us still
+  // render the row (with last-known balance and validator) when RPC is
+  // throttled. _classifyStake's output is stable JSON so we just stringify.
+  function _stakeStateKey(pk) { return `vault.sol.stakeState.${pk}`; }
+  function _readStakeState(pk) {
+    try {
+      const raw = localStorage.getItem(_stakeStateKey(pk));
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+  function _writeStakeState(pk, stake) {
+    try { localStorage.setItem(_stakeStateKey(pk), JSON.stringify(stake)); } catch {}
+  }
+  function _forgetStakeState(pk) {
+    try { localStorage.removeItem(_stakeStateKey(pk)); } catch {}
   }
 
   // Lists stake accounts where the user is the withdraw authority.
@@ -338,12 +376,16 @@ const SolanaWallet = (() => {
     const currentEpoch = epochInfo?.epoch ?? 0;
 
     const fromRpc = Array.isArray(rpcAccountsRaw)
-      ? rpcAccountsRaw.map(a => _classifyStake(
-          a.pubkey,
-          a.account?.data?.parsed?.info || {},
-          a.account?.lamports ?? 0,
-          currentEpoch,
-        ))
+      ? rpcAccountsRaw.map(a => {
+          const stake = _classifyStake(
+            a.pubkey,
+            a.account?.data?.parsed?.info || {},
+            a.account?.lamports ?? 0,
+            currentEpoch,
+          );
+          _writeStakeState(a.pubkey, stake);
+          return stake;
+        })
       : [];
 
     // Hydrate any cached pubkeys the RPC didn't return.
@@ -358,24 +400,23 @@ const SolanaWallet = (() => {
         ok = true;
         value = info?.value ?? null;
       } catch {
-        // Network/RPC failure. Keep the cached pubkey, render nothing
-        // this cycle; user can retry. Better empty UI than lost cache.
-        return { keep: true, render: null, pk };
+        // Network/RPC failure. Keep the cached pubkey AND render the
+        // last-known state if we have one — otherwise nothing this cycle.
+        const stale = _readStakeState(pk);
+        return { keep: true, render: stale || null, pk };
       }
       if (ok && value === null) {
         // RPC confirmed: account doesn't exist anymore (withdrawn / closed).
         return { keep: false, render: null, pk };
       }
-      return {
-        keep: true,
+      const stake = _classifyStake(
         pk,
-        render: _classifyStake(
-          pk,
-          value.data?.parsed?.info || {},
-          value.lamports ?? 0,
-          currentEpoch,
-        ),
-      };
+        value.data?.parsed?.info || {},
+        value.lamports ?? 0,
+        currentEpoch,
+      );
+      _writeStakeState(pk, stake);
+      return { keep: true, pk, render: stake };
     }));
 
     // Drop only the cache entries the RPC EXPLICITLY confirmed are gone.
