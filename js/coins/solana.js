@@ -185,10 +185,30 @@ const SolanaWallet = (() => {
   const PROG_JUP_V6  = 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4';
   const PROG_JUP_V4  = 'JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB';
 
+  // Per-address transaction history cache. Same reasoning as the balance
+  // and stake caches: when the RPC fails we'd rather show stale history
+  // than an empty list that looks like all txs were wiped.
+  function _historyCacheKey(addr) { return `vault.sol.history.${addr}`; }
+  function _readHistoryCache(addr) {
+    try {
+      const raw = localStorage.getItem(_historyCacheKey(addr));
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch { return []; }
+  }
+  function _writeHistoryCache(addr, rows) {
+    try { localStorage.setItem(_historyCacheKey(addr), JSON.stringify(rows)); } catch {}
+  }
   async function getHistory(address) {
     try {
       const sigs = await rpcCall('getSignaturesForAddress', [address, { limit: 10 }]);
-      if (!sigs || !sigs.length) return [];
+      if (!sigs || !sigs.length) {
+        // RPC returned an empty result. Real-empty for a fresh wallet,
+        // or RPC silently truncated. Trust it and overwrite cache only
+        // if we successfully got an array (vs. null/undefined).
+        if (Array.isArray(sigs)) _writeHistoryCache(address, []);
+        return _readHistoryCache(address);
+      }
       const details = await Promise.allSettled(sigs.map(s =>
         rpcCall('getTransaction', [s.signature, { encoding: 'json', maxSupportedTransactionVersion: 0 }])
       ));
@@ -263,8 +283,13 @@ const SolanaWallet = (() => {
           explorerUrl: `https://solscan.io/tx/${s.signature}`,
         });
       }
+      // RPC call succeeded — refresh cache and return the fresh list.
+      _writeHistoryCache(address, out);
       return out;
-    } catch { return []; }
+    } catch {
+      // RPC failed. Serve whatever cached history we still have.
+      return _readHistoryCache(address);
+    }
   }
 
   // ── Native staking ───────────────────────────────────────────────────
