@@ -319,16 +319,21 @@ const SolanaWallet = (() => {
   //      getAccountInfo (a lightweight call public RPCs allow). If the
   //      account is gone (withdrawn / closed), drop it from the cache.
   async function getStakeAccounts(address) {
-    // Current epoch is needed by both paths; fetch in parallel.
-    const [rpcAccountsRaw, epochInfo] = await Promise.all([
+    // We must distinguish "RPC failed" from "RPC says the account is gone".
+    // Treating a transient throttle as a real deletion has wiped users'
+    // cached stake-account pubkeys in the past — never again.
+    let rpcAccountsOk = false;
+    let rpcAccountsRaw = null;
+    let epochInfo = null;
+    await Promise.all([
       rpcCall('getProgramAccounts', [
         solanaWeb3.StakeProgram.programId.toBase58(),
         {
           encoding: 'jsonParsed',
           filters: [{ memcmp: { offset: 44, bytes: address } }],
         },
-      ]).catch(() => null),
-      rpcCall('getEpochInfo', []).catch(() => null),
+      ]).then(r => { rpcAccountsOk = true; rpcAccountsRaw = r; }).catch(() => {}),
+      rpcCall('getEpochInfo', []).then(r => { epochInfo = r; }).catch(() => {}),
     ]);
     const currentEpoch = epochInfo?.epoch ?? 0;
 
@@ -346,24 +351,48 @@ const SolanaWallet = (() => {
     const cached = _readStakeCache(address);
     const missing = cached.filter(pk => !seen.has(pk));
     const fromCache = await Promise.all(missing.map(async pk => {
-      const info = await rpcCall('getAccountInfo', [pk, { encoding: 'jsonParsed' }]).catch(() => null);
-      const value = info?.value;
-      if (!value) {
-        // Account no longer exists — withdraw must have closed it.
-        forgetStakeAccount(address, pk);
-        return null;
+      let ok = false;
+      let value = null;
+      try {
+        const info = await rpcCall('getAccountInfo', [pk, { encoding: 'jsonParsed' }]);
+        ok = true;
+        value = info?.value ?? null;
+      } catch {
+        // Network/RPC failure. Keep the cached pubkey, render nothing
+        // this cycle; user can retry. Better empty UI than lost cache.
+        return { keep: true, render: null, pk };
       }
-      return _classifyStake(
+      if (ok && value === null) {
+        // RPC confirmed: account doesn't exist anymore (withdrawn / closed).
+        return { keep: false, render: null, pk };
+      }
+      return {
+        keep: true,
         pk,
-        value.data?.parsed?.info || {},
-        value.lamports ?? 0,
-        currentEpoch,
-      );
+        render: _classifyStake(
+          pk,
+          value.data?.parsed?.info || {},
+          value.lamports ?? 0,
+          currentEpoch,
+        ),
+      };
     }));
 
-    const all = [...fromRpc, ...fromCache.filter(Boolean)];
-    // Persist the full set so next open is fast and resilient.
-    _writeStakeCache(address, all.map(a => a.pubkey));
+    // Drop only the cache entries the RPC EXPLICITLY confirmed are gone.
+    for (const item of fromCache) {
+      if (item && item.keep === false) forgetStakeAccount(address, item.pk);
+    }
+
+    const all = [
+      ...fromRpc,
+      ...fromCache.filter(x => x && x.render).map(x => x.render),
+    ];
+    // Only refresh the full cache snapshot if the canonical scan succeeded.
+    // Otherwise leave the existing cache intact so a flaky RPC can't wipe
+    // a user's stake-account list.
+    if (rpcAccountsOk) {
+      _writeStakeCache(address, all.map(a => a.pubkey));
+    }
     return all;
   }
 

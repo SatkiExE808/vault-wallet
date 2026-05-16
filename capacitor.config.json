@@ -14,7 +14,7 @@
   },
   "ios": {
     "backgroundColor": "#0f1117",
-    "contentInset": "always",
+    "contentInset": "never",
     "allowsLinkPreview": false,
     "scrollEnabled": false,
     "limitsNavigationsToAppBoundDomains": false
