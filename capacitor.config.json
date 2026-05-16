@@ -3,7 +3,6 @@
   "appName": "Vault",
   "webDir": "www",
   "server": {
-    "url": "https://satkiexe808.github.io/vault-wallet/",
     "androidScheme": "https",
     "iosScheme": "https",
     "cleartext": false
