@@ -4,12 +4,17 @@
   <meta charset="UTF-8">
   <!-- Content Security Policy. script-src is allow-listed to the exact
        CDNs we pin via SRI below; 'wasm-unsafe-eval' is needed by the
-       Monero web worker. style-src needs 'unsafe-inline' because the app
-       uses ~60 inline style="" attributes for tinted history rows etc.
-       connect-src is broad (https:/wss:) because the wallet talks to a
-       long list of public RPCs whose hosts change over time — the real
-       XSS defense is escapeHtml() + this script-src allow-list. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';">
+       Monero web worker. 'unsafe-eval' is regrettably needed because
+       monero-javascript's bundled output (lib/monero-browser.js) calls
+       new Function() for its isBrowser runtime check — the entire
+       Monero stack would refuse to initialize otherwise. The remaining
+       CSP teeth (script-src allowlist + SRI on every CDN + escapeHtml
+       on every RPC field + no server.url) still close the XSS paths
+       that would make unsafe-eval exploitable. style-src needs
+       'unsafe-inline' for the app's ~60 inline style="" attributes.
+       frame-ancestors is set via X-Frame-Options on the deployed
+       server, not here — meta CSP can't enforce it. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com 'wasm-unsafe-eval' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
@@ -21,6 +26,7 @@
   <meta name="theme-color" content="#0b0d12">
   <title>Vault — Crypto Wallet</title>
   <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
   <!-- Apple home-screen icons. iOS picks the largest size <= the screen needs.
        180x180 is the canonical "Add to Home Screen" size on modern iPhones. -->
   <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-192.png">
