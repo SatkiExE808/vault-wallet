@@ -222,6 +222,17 @@ const SolanaWallet = (() => {
         if (Array.isArray(sigs)) _writeHistoryCache(address, []);
         return _readHistoryCache(address);
       }
+      // Build the prior cache lookup up-front. We need it during the
+      // per-signature loop to (a) substitute the cached row when
+      // getTransaction returns null for a signature — otherwise we'd
+      // emit a bogus default "Sent —" row, and (b) preserve a rich
+      // classification (stake/liquid) when the new fetch downgrades to
+      // plain send/receive because logMessages got stripped.
+      const RICH_KINDS = new Set(['stake', 'stake-withdraw', 'stake-manage', 'liquid-stake', 'liquid-unstake']);
+      const prevByHash = new Map();
+      for (const t of _readHistoryCache(address)) {
+        if (t && t.hash) prevByHash.set(t.hash, t);
+      }
       const details = await Promise.allSettled(sigs.map(s =>
         rpcCall('getTransaction', [s.signature, { encoding: 'json', maxSupportedTransactionVersion: 0 }])
       ));
@@ -229,63 +240,92 @@ const SolanaWallet = (() => {
       for (let i = 0; i < sigs.length; i++) {
         const s = sigs[i];
         const d = details[i].status === 'fulfilled' ? details[i].value : null;
-        let type = 'send', amount = '—', kind = 'send', delta = 0;
-        if (d && d.meta && d.transaction) {
-          // For V0 transactions with Address Lookup Tables (Jupiter
-          // swaps, modern Solana txs), the resolved program/account
-          // pubkeys live in meta.loadedAddresses, appended after the
-          // static accountKeys. Without merging these in, an instruction
-          // whose programIdIndex points past the static slice resolves
-          // to undefined and classification falls back to plain Sent.
-          const staticKeys = (d.transaction.message.accountKeys || []).map(k => typeof k === 'string' ? k : k?.pubkey);
-          const loadedW = (d.meta.loadedAddresses?.writable || []).map(k => typeof k === 'string' ? k : k?.pubkey);
-          const loadedR = (d.meta.loadedAddresses?.readonly || []).map(k => typeof k === 'string' ? k : k?.pubkey);
-          const keys = [...staticKeys, ...loadedW, ...loadedR];
-          const idx = keys.findIndex(k => k === address);
-          if (idx >= 0) {
-            delta = (d.meta.postBalances[idx] - d.meta.preBalances[idx]) / solanaWeb3.LAMPORTS_PER_SOL;
-            type = delta < 0 ? 'send' : 'receive';
-            amount = Math.abs(delta).toFixed(6);
-          }
-          // Belt-and-suspenders program detection. Combine three
-          // independent signals and OR them together — whichever finds
-          // a hit wins:
-          //   1. Log messages "Program <id> invoke [N]" — present
-          //      whenever the RPC returns logs; covers CPIs at any depth.
-          //   2. Top-level instructions, resolved through `keys` (which
-          //      already merges static accountKeys + loadedAddresses for
-          //      V0 / ALT txs above).
-          //   3. Inner instructions (meta.innerInstructions) for CPIs
-          //      whose outer program is something else.
-          // Some public RPCs strip logMessages from old transactions
-          // and some strip innerInstructions, so we don't rely on any
-          // single source.
-          const logs = (d.meta.logMessages || []).join('\n');
-          const topIxs   = d.transaction.message.instructions || [];
-          const innerIxs = (d.meta.innerInstructions || []).flatMap(g => g.instructions || []);
-          const programIds = [...topIxs, ...innerIxs].map(ix => {
-            if (typeof ix.programId === 'string') return ix.programId;
-            if (typeof ix.programIdIndex === 'number') return keys[ix.programIdIndex];
-            return null;
-          }).filter(Boolean);
-          const hitStake = logs.includes(PROG_STAKE) || programIds.includes(PROG_STAKE);
-          const hitJup   = logs.includes(PROG_JUP_V6) || logs.includes(PROG_JUP_V4)
-                        || programIds.includes(PROG_JUP_V6) || programIds.includes(PROG_JUP_V4);
-          // Classify. We can't reliably parse stake-instruction discriminators
-          // here so we use the signed delta as a proxy:
-          //   stake → big negative (lamports go into the new stake account)
-          //   withdraw → big positive (lamports come back to wallet)
-          //   manage (deactivate/etc.) → tiny / near-zero delta
-          //   Jupiter → swap is liquid stake (out) or unstake (in)
-          if (hitJup) {
-            kind = delta < 0 ? 'liquid-stake' : 'liquid-unstake';
-          } else if (hitStake) {
-            if (Math.abs(delta) < 0.0001) kind = 'stake-manage';
-            else if (delta < 0)           kind = 'stake';
-            else                          kind = 'stake-withdraw';
-          } else {
-            kind = type; // plain send / receive
-          }
+        const prev = prevByHash.get(s.signature);
+        // No usable details for this signature — fall back to the cached
+        // row (preserves correct classification) rather than emitting a
+        // wrong default. If we've never seen this sig before, all we can
+        // do is keep the placeholder row.
+        if (!d || !d.meta || !d.transaction) {
+          if (prev) { out.push(prev); continue; }
+          out.push({
+            hash: s.signature,
+            type: 'send', amount: '—', kind: 'send',
+            time: s.blockTime ? s.blockTime * 1000 : null,
+            confirmed: !s.err,
+            status: s.err ? 'error' : 'ok',
+            explorerUrl: `https://solscan.io/tx/${s.signature}`,
+          });
+          continue;
+        }
+        // For V0 transactions with Address Lookup Tables (Jupiter swaps,
+        // modern Solana txs), the resolved program/account pubkeys live
+        // in meta.loadedAddresses, appended after the static accountKeys.
+        // Without merging these in, an instruction whose programIdIndex
+        // points past the static slice resolves to undefined and
+        // classification falls back to plain Sent.
+        const staticKeys = (d.transaction.message.accountKeys || []).map(k => typeof k === 'string' ? k : k?.pubkey);
+        const loadedW = (d.meta.loadedAddresses?.writable || []).map(k => typeof k === 'string' ? k : k?.pubkey);
+        const loadedR = (d.meta.loadedAddresses?.readonly || []).map(k => typeof k === 'string' ? k : k?.pubkey);
+        const keys = [...staticKeys, ...loadedW, ...loadedR];
+        const idx = keys.findIndex(k => k === address);
+        // Couldn't locate our address in this tx's account keys (some
+        // RPCs return an abridged keys list, or the indexing changed).
+        // Without idx we can't compute the delta, so prefer the previous
+        // cached row over a wrong default.
+        if (idx < 0) {
+          if (prev) { out.push(prev); continue; }
+          out.push({
+            hash: s.signature,
+            type: 'send', amount: '—', kind: 'send',
+            time: s.blockTime ? s.blockTime * 1000 : null,
+            confirmed: !s.err,
+            status: s.err ? 'error' : 'ok',
+            explorerUrl: `https://solscan.io/tx/${s.signature}`,
+          });
+          continue;
+        }
+        const delta  = (d.meta.postBalances[idx] - d.meta.preBalances[idx]) / solanaWeb3.LAMPORTS_PER_SOL;
+        const type   = delta < 0 ? 'send' : 'receive';
+        const amount = Math.abs(delta).toFixed(6);
+        // Belt-and-suspenders program detection. Combine three
+        // independent signals and OR them together — whichever finds a
+        // hit wins:
+        //   1. Log messages "Program <id> invoke [N]" — present whenever
+        //      the RPC returns logs; covers CPIs at any depth.
+        //   2. Top-level instructions, resolved through `keys` (which
+        //      already merges static accountKeys + loadedAddresses for
+        //      V0 / ALT txs above).
+        //   3. Inner instructions (meta.innerInstructions) for CPIs
+        //      whose outer program is something else.
+        // Some public RPCs strip logMessages from old transactions and
+        // some strip innerInstructions, so we don't rely on any single
+        // source.
+        const logs = (d.meta.logMessages || []).join('\n');
+        const topIxs   = d.transaction.message.instructions || [];
+        const innerIxs = (d.meta.innerInstructions || []).flatMap(g => g.instructions || []);
+        const programIds = [...topIxs, ...innerIxs].map(ix => {
+          if (typeof ix.programId === 'string') return ix.programId;
+          if (typeof ix.programIdIndex === 'number') return keys[ix.programIdIndex];
+          return null;
+        }).filter(Boolean);
+        const hitStake = logs.includes(PROG_STAKE) || programIds.includes(PROG_STAKE);
+        const hitJup   = logs.includes(PROG_JUP_V6) || logs.includes(PROG_JUP_V4)
+                      || programIds.includes(PROG_JUP_V6) || programIds.includes(PROG_JUP_V4);
+        let kind;
+        if (hitJup) {
+          kind = delta < 0 ? 'liquid-stake' : 'liquid-unstake';
+        } else if (hitStake) {
+          if (Math.abs(delta) < 0.0001) kind = 'stake-manage';
+          else if (delta < 0)           kind = 'stake';
+          else                          kind = 'stake-withdraw';
+        } else {
+          kind = type;
+        }
+        // Sticky classification: if we previously classified this sig
+        // as a rich kind (stake/liquid) and the new fetch dropped to
+        // plain send/receive (logMessages stripped), keep the rich kind.
+        if (prev && RICH_KINDS.has(prev.kind) && !RICH_KINDS.has(kind)) {
+          kind = prev.kind;
         }
         out.push({
           hash: s.signature,
@@ -296,26 +336,8 @@ const SolanaWallet = (() => {
           explorerUrl: `https://solscan.io/tx/${s.signature}`,
         });
       }
-      // Merge with the cached classification so a stripped RPC response
-      // can't downgrade a tx from stake/liquid-stake back to plain send.
-      // Once we've seen the full logMessages/innerInstructions for a
-      // signature and classified it as a stake or jupiter action, that
-      // classification is sticky.
-      const RICH_KINDS = new Set(['stake', 'stake-withdraw', 'stake-manage', 'liquid-stake', 'liquid-unstake']);
-      const prevByHash = new Map();
-      for (const t of _readHistoryCache(address)) {
-        if (t && t.hash) prevByHash.set(t.hash, t);
-      }
-      const merged = out.map(tx => {
-        const prev = prevByHash.get(tx.hash);
-        if (prev && RICH_KINDS.has(prev.kind) && !RICH_KINDS.has(tx.kind)) {
-          // Don't lose the better classification we already had.
-          return { ...tx, kind: prev.kind };
-        }
-        return tx;
-      });
-      _writeHistoryCache(address, merged);
-      return merged;
+      _writeHistoryCache(address, out);
+      return out;
     } catch {
       // RPC failed. Serve whatever cached history we still have.
       return _readHistoryCache(address);
