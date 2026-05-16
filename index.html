@@ -415,7 +415,21 @@
   <!-- PWA service worker -->
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
+      // updateViaCache:'none' bypasses the HTTP cache for the SW script
+      // itself. Without it, iOS WebKit was serving a stale sw.js from
+      // disk for up to 24h after a deploy — users stayed on the old SW
+      // (and the old bundle) until the HTTP cache TTL expired naturally.
+      navigator.serviceWorker
+        .register('./sw.js', { updateViaCache: 'none' })
+        .then(reg => {
+          // Force an immediate update check on every app open.
+          try { reg.update(); } catch {}
+          // And again every 5 minutes while the app stays foregrounded,
+          // so a long-running session picks up new builds without the
+          // user having to kill + reopen.
+          setInterval(() => { try { reg.update(); } catch {} }, 5 * 60 * 1000);
+        })
+        .catch(() => {});
       // When a new SW activates, the cache has fresh JS but this page is
       // still running whatever was loaded at startup. Reload once so the
       // user gets the new code without having to manually kill the app.
