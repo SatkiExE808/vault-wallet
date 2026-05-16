@@ -425,10 +425,23 @@ const SolanaWallet = (() => {
         ok = true;
         value = info?.value ?? null;
       } catch {
-        // Network/RPC failure. Keep the cached pubkey AND render the
-        // last-known state if we have one — otherwise nothing this cycle.
+        // Network/RPC failure. Keep the cached pubkey AND render either
+        // the last-known state or — on a fresh install with no cached
+        // state — a minimal pending placeholder so the row is visible
+        // and the user knows the addition worked.
         const stale = _readStakeState(pk);
-        return { keep: true, render: stale || null, pk };
+        return {
+          keep: true,
+          pk,
+          render: stale || {
+            pubkey: pk,
+            lamports: 0,
+            sol: '—',
+            validator: null,
+            state: 'pending',
+            _offline: true,
+          },
+        };
       }
       if (ok && value === null) {
         // RPC confirmed: account doesn't exist anymore (withdrawn / closed).
