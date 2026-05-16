@@ -1459,8 +1459,21 @@ body {
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 0;
   border-bottom: 1px solid var(--border);
+  background: transparent;
 }
 .settings-row:last-child { border-bottom: none; }
+
+/* Drag-to-reorder affordances for Manage Assets */
+.settings-row .drag-handle {
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.settings-row .drag-handle:active { cursor: grabbing; opacity: 1; }
+.settings-row-ghost {
+  opacity: 0.4;
+  background: var(--surface2);
+  border-radius: 8px;
+}
 
 /* ── Toggle switch ──────────────────────────────────────────── */
 .toggle-switch {

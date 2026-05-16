@@ -736,28 +736,52 @@ async function _blockchairHistory(addr, chain, explorer, tokenAddr, decimals) {
 // go through the same chain-key RPC fan-out as the rest of the
 // wallet — no extra endpoints to manage.
 const _TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'; // keccak("Transfer(address,address,uint256)")
-const _RPC_LOG_RANGE = 50000; // ~1.7 days on BSC (3s blocks) / ~28 hr on OP (2s)
+// Public EVM RPCs cap eth_getLogs to a per-call block window:
+//   llamarpc:  ~1024     publicnode: ~10000     ankr:    ~3000
+//   alchemy:   1000-10000 (tier-dependent)
+// We chunk in conservative 5000-block pieces and run them in parallel.
+// Total scanned per chain is _LOG_TOTAL — set per-chain because BSC's
+// 3-second blocks need more height to cover the same wall-clock window
+// as OP's 2-second blocks.
+const _LOG_CHUNK = 5000;
+const _LOG_TOTAL = { BSC: 20000, OPTIMISM: 15000 }; // ~16 hr BSC / ~8 hr OP
+
+async function _getLogsChunked(rpc, chainKey, baseFilter) {
+  const tipHex = await rpc(chainKey, 'eth_blockNumber', []);
+  const tip = parseInt(tipHex, 16);
+  const total = _LOG_TOTAL[chainKey] || 10000;
+  const start = Math.max(0, tip - total);
+  const tasks = [];
+  for (let from = start; from <= tip; from += _LOG_CHUNK) {
+    const to = Math.min(tip, from + _LOG_CHUNK - 1);
+    const f = { ...baseFilter,
+                fromBlock: '0x' + from.toString(16),
+                toBlock:   '0x' + to.toString(16) };
+    tasks.push(rpc(chainKey, 'eth_getLogs', [f])
+      .catch(e => { console.warn(`getLogs ${chainKey} ${from}-${to}:`, e?.message || e); return []; }));
+  }
+  const results = await Promise.all(tasks);
+  const out = [];
+  for (const r of results) if (Array.isArray(r)) out.push(...r);
+  return out;
+}
 
 async function _rpcLogHistory(addr, chainKey, tokenAddr, decimals, explorer) {
   if (!tokenAddr) return []; // native — see comment above
   const rpc = window.EVMChains?._rpc;
   if (!rpc) throw new Error('EVMChains module not loaded — refresh the app');
 
-  const tipHex = await rpc(chainKey, 'eth_blockNumber', []);
-  const tip = parseInt(tipHex, 16);
-  const fromBlock = '0x' + Math.max(0, tip - _RPC_LOG_RANGE).toString(16);
-  const toBlock = 'latest';
-
   // Encode the user's address as a 32-byte topic (left-padded).
   const addrTopic = '0x' + addr.toLowerCase().slice(2).padStart(64, '0');
 
   // Two parallel queries: sent (we're the `from` indexed arg)
-  // and received (we're the `to` indexed arg).
+  // and received (we're the `to` indexed arg). Each is chunked
+  // internally to stay under per-RPC block range limits.
   const [sent, recv] = await Promise.all([
-    rpc(chainKey, 'eth_getLogs', [{ fromBlock, toBlock, address: tokenAddr,
-        topics: [_TRANSFER_TOPIC, addrTopic, null] }]),
-    rpc(chainKey, 'eth_getLogs', [{ fromBlock, toBlock, address: tokenAddr,
-        topics: [_TRANSFER_TOPIC, null, addrTopic] }]),
+    _getLogsChunked(rpc, chainKey, { address: tokenAddr,
+        topics: [_TRANSFER_TOPIC, addrTopic, null] }),
+    _getLogsChunked(rpc, chainKey, { address: tokenAddr,
+        topics: [_TRANSFER_TOPIC, null, addrTopic] }),
   ]);
 
   // Combine, dedupe by (txhash, logIndex), sort newest-first, cap at 25.
@@ -946,8 +970,69 @@ function saveEnabledCoins() {
   localStorage.setItem('enabled_coins', JSON.stringify([...enabledCoins]));
 }
 
+// Persistent user-defined coin order — drives both the home asset list
+// and the Manage Assets list. Set via drag-to-reorder in Manage Assets;
+// unknown ids fall back to the COINS-array order so newly-added coins
+// land at the end of any old saved order.
+function loadCoinOrder() {
+  try {
+    const raw = localStorage.getItem('coin_order');
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return arr.filter(x => typeof x === 'string');
+    }
+  } catch {}
+  return [];
+}
+function saveCoinOrder(ids) {
+  try { localStorage.setItem('coin_order', JSON.stringify(ids)); } catch {}
+}
+function _orderedCoins(arr) {
+  const order = loadCoinOrder();
+  if (!order.length) return arr;
+  const idx = new Map(order.map((id, i) => [id, i]));
+  return [...arr].sort((a, b) => {
+    const ai = idx.has(a.id) ? idx.get(a.id) : Infinity;
+    const bi = idx.has(b.id) ? idx.get(b.id) : Infinity;
+    if (ai !== bi) return ai - bi;
+    return COINS.indexOf(a) - COINS.indexOf(b);
+  });
+}
+
 let enabledCoins = loadEnabledCoins();
-function getActiveCoins() { return COINS.filter(c => enabledCoins.has(c.id)); }
+function getActiveCoins() { return _orderedCoins(COINS.filter(c => enabledCoins.has(c.id))); }
+
+// Balance-text helper used by every coin-row renderer in app.js + home.js.
+// Surfaces XMR local-sync progress as "Syncing N%" while the wasm worker
+// is still catching up; otherwise just shows "<balance> <symbol>" or
+// "… <symbol>" while loading.
+function displayBalance(coin) {
+  const bal = state.balances?.[coin.id];
+  if (coin.id === 'XMR' && typeof window.MoneroWallet?.getSyncProgressPct === 'function') {
+    const pct = window.MoneroWallet.getSyncProgressPct();
+    if (pct != null && pct < 100 && (bal == null || bal === '0.000000000' || bal === '…')) {
+      return `Syncing ${pct}%`;
+    }
+  }
+  return `${bal ?? '…'} ${coin.symbol}`;
+}
+window.displayBalance = displayBalance;
+
+// While XMR sync is in flight, the on-screen balance is just a snapshot
+// of whatever's been scanned so far — re-render every 5 s so the user
+// sees the "Syncing N%" indicator tick upward instead of staring at a
+// frozen "0.000 XMR".
+setInterval(() => {
+  if (typeof window.MoneroWallet?.getSyncProgressPct !== 'function') return;
+  const pct = window.MoneroWallet.getSyncProgressPct();
+  if (pct == null || pct >= 100) return;
+  const xmr = COINS.find(c => c.id === 'XMR');
+  if (!xmr) return;
+  const txt = displayBalance(xmr);
+  // Coin-list footer row + wallet-detail bal + home-asset rows.
+  const sb = document.getElementById('sb-XMR'); if (sb) sb.textContent = txt;
+  document.querySelectorAll('[data-bal-coin="XMR"]').forEach(el => { el.textContent = txt; });
+}, 5000);
 
 // ── App state ─────────────────────────────────────────────────────────────────
 const state = {
@@ -1441,7 +1526,7 @@ function renderCoinList() {
         <div class="coin-info">
           <div class="coin-name">${coin.name}${coin.networkLabel
             ? ` <span class="network-badge ${coin.networkClass}">${coin.networkLabel}</span>` : ''}</div>
-          <div class="coin-bal" id="sb-${coin.id}">${state.balances[coin.id] ?? '…'} ${coin.symbol}</div>
+          <div class="coin-bal" id="sb-${coin.id}" data-bal-coin="${coin.id}">${displayBalance(coin)}</div>
         </div>
       </div>`).join('');
   }
@@ -1454,7 +1539,7 @@ function updateSidebarBal(id) {
   if (!el || !coin) return;
   const bal = state.balances[id] ?? '…';
   const usd = formatUSD(bal, state.prices[id]);
-  el.innerHTML = `${bal} ${coin.symbol}${usd ? `<span style="display:block;font-size:11px">${usd}</span>` : ''}`;
+  el.innerHTML = `${displayBalance(coin)}${usd ? `<span style="display:block;font-size:11px">${usd}</span>` : ''}`;
 }
 
 function selectCoin(id) {
@@ -2206,16 +2291,20 @@ function renderSettingsList() {
   const categories = [...new Set(COINS.map(c => c.category))];
   let html = '';
   for (const cat of categories) {
-    const group = COINS.filter(c => c.category === cat);
+    // Apply saved order within each category — cross-category moves
+    // aren't supported (the home asset list groups by category too).
+    const group = _orderedCoins(COINS.filter(c => c.category === cat));
     html += `<div class="coin-category" style="padding:16px 0 6px">${cat}</div>`;
+    html += `<div class="settings-cat-group" data-category="${escapeHtml(cat)}">`;
     html += group.map(coin => {
       const on = enabledCoins.has(coin.id);
       return `
-        <div class="settings-row">
-          <div style="display:flex;align-items:center;gap:10px">
+        <div class="settings-row" data-coin-id="${coin.id}">
+          <span class="drag-handle" aria-label="Reorder ${escapeHtml(coin.name)}" style="cursor:grab;font-size:18px;color:var(--text3);padding:0 6px;user-select:none;touch-action:none">≡</span>
+          <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
             <img src="${coin.icon}" alt="${coin.symbol}" width="28" height="28"
               style="border-radius:50%;flex-shrink:0">
-            <div>
+            <div style="min-width:0">
               <div style="font-size:14px;font-weight:600">${coin.name}
                 ${coin.networkLabel
                   ? `<span class="network-badge ${coin.networkClass}" style="margin-left:4px">${coin.networkLabel}</span>`
@@ -2229,6 +2318,7 @@ function renderSettingsList() {
           </label>
         </div>`;
     }).join('');
+    html += `</div>`;
   }
   html += `<div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
   <div style="font-size:13px;font-weight:600;margin-bottom:6px">Legacy ETH Recovery</div>
@@ -2240,6 +2330,30 @@ function renderSettingsList() {
 </div>`;
   document.getElementById('settings-coin-list').innerHTML = html;
   loadLegacyRecovery();
+
+  // Drag-to-reorder: each category group is independently sortable.
+  // After any drop, collect coin IDs in DOM order across ALL groups
+  // and persist as the canonical coin_order. Home asset list + bottom
+  // coin picker re-render to pick up the new order.
+  if (typeof Sortable !== 'undefined') {
+    document.querySelectorAll('#settings-coin-list .settings-cat-group').forEach(group => {
+      Sortable.create(group, {
+        handle: '.drag-handle',
+        animation: 150,
+        ghostClass: 'settings-row-ghost',
+        forceFallback: true,    // consistent touch behavior on iOS WebView
+        delayOnTouchOnly: true,
+        delay: 80,
+        onEnd: () => {
+          const ids = [...document.querySelectorAll('#settings-coin-list .settings-row[data-coin-id]')]
+            .map(r => r.dataset.coinId);
+          saveCoinOrder(ids);
+          try { if (typeof updateHome === 'function') updateHome(); } catch {}
+          try { if (typeof renderCoinList === 'function') renderCoinList(); } catch {}
+        },
+      });
+    });
+  }
 }
 
 async function confirmResetWallet() {

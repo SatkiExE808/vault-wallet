@@ -134,6 +134,8 @@
         const badge = coin.networkLabel
           ? `<span class="network-badge ${coin.networkClass}">${coin.networkLabel}</span>` : '';
         const progress = renderProgressPills(coin.id);
+        const balText = (typeof window.displayBalance === 'function')
+          ? window.displayBalance(coin) : `${bal} ${coin.symbol}`;
         return `
           <div class="asset-item" data-coin="${coin.id}">
             <div class="asset-icon">
@@ -145,7 +147,7 @@
               ${progress}
             </div>
             <div class="asset-right">
-              <div class="asset-bal">${bal}</div>
+              <div class="asset-bal" data-bal-coin="${coin.id}">${balText}</div>
               <div class="asset-usd">${usd}</div>
             </div>
           </div>`;
@@ -342,7 +344,10 @@
       badge.className = 'network-badge ' + coin.networkClass;
       badge.style.display = '';
     } else { badge.style.display = 'none'; }
-    $('wd-amount').textContent = `${bal} ${coin.symbol}`;
+    $('wd-amount').textContent = (typeof window.displayBalance === 'function')
+      ? window.displayBalance(coin)
+      : `${bal} ${coin.symbol}`;
+    $('wd-amount').setAttribute('data-bal-coin', coin.id);
     $('wd-usd').textContent = usd;
     $('wd-address').textContent = addr;
 
@@ -699,6 +704,8 @@
         const badge = coin.networkLabel
           ? `<span class="network-badge ${coin.networkClass}">${coin.networkLabel}</span>` : '';
         const progress = renderProgressPills(coin.id);
+        const balText = (typeof window.displayBalance === 'function')
+          ? window.displayBalance(coin) : `${bal} ${coin.symbol}`;
         return `
           <div class="asset-item" data-coin="${coin.id}">
             <div class="asset-icon">
@@ -710,7 +717,7 @@
               ${progress}
             </div>
             <div class="asset-right">
-              <div class="asset-bal">${bal}</div>
+              <div class="asset-bal" data-bal-coin="${coin.id}">${balText}</div>
               <div class="asset-usd">${usd}</div>
             </div>
           </div>`;
