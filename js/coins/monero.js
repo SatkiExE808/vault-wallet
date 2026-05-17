@@ -323,9 +323,27 @@ const MoneroWallet = (() => {
     window.addEventListener('vault-lock', _closeWalletState);
   }
 
+  // Wrap a promise with a hard timeout — used to bail out of
+  // MoneroWalletFull.createWallet calls that hang forever (seen in the
+  // wild when the WASM worker silently stops responding).
+  function _withTimeout(p, ms, label) {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms);
+    });
+    return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+  }
+
+  function _setStatus(msg, err = null) {
+    _wState.status = msg;
+    _wState.lastErr = err ? (err.message || String(err)) : null;
+  }
+
   async function _getLocalWallet(mnemonic) {
-    if (typeof MoneroWalletFull === 'undefined')
+    if (typeof MoneroWalletFull === 'undefined') {
+      _setStatus('Engine not loaded');
       throw new Error('Monero engine not loaded — refresh the app');
+    }
     const spendKeyHex = await deriveSpendKeyHex(mnemonic);
     const tag = spendKeyHex.slice(0, 16);
     if (_wState.tag !== tag) _closeWalletState();
@@ -338,40 +356,50 @@ const MoneroWallet = (() => {
       // (~1 week of recent activity) so we don't scan genesis.
       let restoreHeight = parseInt(localStorage.getItem('xmr_restore_height') || '0') || 0;
       if (restoreHeight === 0) {
+        _setStatus('Fetching network tip…');
         const tip = await getCurrentHeight();
         restoreHeight = Math.max(0, tip - 5000);
         try { localStorage.setItem('xmr_restore_height', String(restoreHeight)); } catch {}
       }
       let lastErr;
       for (const node of _nodeList()) {
+        const host = (() => { try { return new URL(node).host; } catch { return node; } })();
         try {
-          const w = await MoneroWalletFull.createWallet({
-            networkType: 0,
-            privateSpendKey: spendKeyHex,
-            server: node,
-            restoreHeight,
-            proxyToWorker: true,
-          });
-          // Listen for sync progress; the UI reads _wState.syncPct
-          // via getSyncProgressPct() to render a "Syncing N%" hint
-          // next to the balance until the worker catches up.
+          _setStatus(`Connecting to ${host}…`);
+          // 30 s timeout so a hung wallet-creation call doesn't
+          // permanently freeze the UI on '…XMR'. If it hits, we
+          // move on to the next node.
+          const w = await _withTimeout(
+            MoneroWalletFull.createWallet({
+              networkType: 0,
+              privateSpendKey: spendKeyHex,
+              server: node,
+              restoreHeight,
+              proxyToWorker: true,
+            }),
+            30_000,
+            `createWallet via ${host}`
+          );
+          _setStatus(`Connected to ${host}, starting sync…`);
           try {
             await w.addListener({
-              onSyncProgress: (_h, _s, _e, pct) => { _wState.syncPct = Math.round(pct * 100); },
-              onNewBlock:     () => { _wState.syncPct = 100; },
+              onSyncProgress: (_h, _s, _e, pct) => {
+                _wState.syncPct = Math.round(pct * 100);
+                _setStatus(`Syncing ${_wState.syncPct}%`);
+              },
+              onNewBlock:     () => { _wState.syncPct = 100; _setStatus('Synced'); },
             });
           } catch (e) { /* listener API may vary across builds */ }
-          // Background sync — don't block here; getBalance reads
-          // whatever's been scanned so far. First-balance call may
-          // show 0; balance fills in as the worker catches up.
           await w.startSyncing(60_000);
           return w;
         } catch (e) {
-          console.warn(`XMR node ${node} unreachable:`, e);
+          console.warn(`XMR node ${host} failed:`, e);
+          _setStatus(`${host}: ${(e?.message || e).toString().slice(0, 60)}`, e);
           lastErr = e;
         }
       }
       _closeWalletState();
+      _setStatus(`All nodes failed — try a different one in Settings`, lastErr);
       throw new Error('No Monero node reachable: ' + (lastErr?.message || lastErr));
     })();
     return _wState.promise;
@@ -404,8 +432,20 @@ const MoneroWallet = (() => {
     } catch { return null; }
   }
 
+  function getSyncStatus() {
+    // Human-readable status string set by _setStatus at each step of
+    // wallet creation + sync. Surfaced in the UI so users see what
+    // stage is stuck instead of staring at a frozen '…XMR'.
+    return _wState.status || null;
+  }
+
+  function getLastError() {
+    return _wState.lastErr || null;
+  }
+
   return { deriveAddress, deriveSubaddress, deriveViewKey, deriveViewKeyHex,
            deriveSpendKeyHex, getBalance, getSyncProgressPct,
+           getSyncStatus, getLastError,
            sendXMR, getCurrentHeight,
            // Called from Settings when the user changes the restore
            // height. Drops the cached wallet so the next balance refresh

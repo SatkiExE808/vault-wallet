@@ -1009,10 +1009,17 @@ function getActiveCoins() { return _orderedCoins(COINS.filter(c => enabledCoins.
 // "… <symbol>" while loading.
 function displayBalance(coin) {
   const bal = state.balances?.[coin.id];
-  if (coin.id === 'XMR' && typeof window.MoneroWallet?.getSyncProgressPct === 'function') {
-    const pct = window.MoneroWallet.getSyncProgressPct();
+  if (coin.id === 'XMR' && window.MoneroWallet) {
+    const pct = window.MoneroWallet.getSyncProgressPct?.();
     if (pct != null && pct < 100 && (bal == null || bal === '0.000000000' || bal === '…')) {
       return `Syncing ${pct}%`;
+    }
+    // When there's no balance and no progress yet, fall back to
+    // whatever status string the engine has set. Far better than a
+    // frozen '…XMR' for hours.
+    if (bal == null) {
+      const status = window.MoneroWallet.getSyncStatus?.();
+      if (status) return status;
     }
   }
   return `${bal ?? '…'} ${coin.symbol}`;
