@@ -366,84 +366,68 @@ const MoneroWallet = (() => {
         restoreHeight = Math.max(0, tip - 5000);
         try { localStorage.setItem('xmr_restore_height', String(restoreHeight)); } catch {}
       }
-      // Remember which node worked last so we try it first next time —
-      // saves cycling through 10 failures every restart.
+      // Remember which node worked last so we try it first next time
+      // (saves cycling through every fallback on every restart).
       const preferred = localStorage.getItem('xmr_last_good_node') || '';
       const nodes = preferred
         ? [preferred, ..._nodeList().filter(n => n !== preferred)]
         : _nodeList();
 
       let lastErr;
+      let wasmFailed = false;
       for (const node of nodes) {
         const host = (() => { try { return new URL(node).host; } catch { return node; } })();
         try {
-          _setStatus(`Building wallet for ${host}…`);
-          // Step 1: create the wallet WITHOUT a daemon. This part is
-          // pure WASM init + key derivation, no network. Doing it
-          // first lets us isolate WASM-init failures from
-          // daemon-connection failures.
+          _setStatus(`Connecting via ${host}…`);
           const w = await _withTimeout(
             MoneroWalletFull.createWallet({
               networkType: 0,
               privateSpendKey: spendKeyHex,
+              server: node,
               restoreHeight,
-              // proxyToWorker: false runs the WASM on the main thread.
-              // proxyToWorker: true was hanging in the Capacitor
-              // WebView — the worker context apparently can't reach
-              // the network reliably from monero-javascript's bundled
-              // HTTP client. Main thread blocks the UI briefly during
-              // sync but actually works.
-              proxyToWorker: false,
+              proxyToWorker: true,
             }),
-            20_000,
-            `wallet build via ${host}`
+            25_000,
+            `createWallet via ${host}`
           );
-
-          // Step 2: attach the daemon. Separate from createWallet so a
-          // network/CORS failure here can't be mistaken for a WASM
-          // initialisation failure.
-          _setStatus(`Attaching daemon ${host}…`);
-          try {
-            await _withTimeout(
-              w.setDaemonConnection({ uri: node }),
-              15_000,
-              `setDaemonConnection ${host}`
-            );
-          } catch (e) {
-            // Fallback: some library versions expose .setDaemon
-            // instead. Try that before giving up.
-            if (typeof w.setDaemon === 'function') {
-              await _withTimeout(w.setDaemon(node), 15_000, `setDaemon ${host}`);
-            } else {
-              throw e;
-            }
-          }
-
-          _setStatus(`Starting sync via ${host}…`);
+          _setStatus(`Connected to ${host}, starting sync…`);
           try {
             await w.addListener({
               onSyncProgress: (_h, _s, _e, pct) => {
                 _wState.syncPct = Math.round(pct * 100);
                 _setStatus(`Syncing ${_wState.syncPct}%`);
               },
-              onNewBlock:     () => { _wState.syncPct = 100; _setStatus('Synced'); },
+              onNewBlock: () => { _wState.syncPct = 100; _setStatus('Synced'); },
             });
           } catch (e) { /* listener API may vary across builds */ }
           await w.startSyncing(60_000);
-          // Remember this one for next time.
           try { localStorage.setItem('xmr_last_good_node', node); } catch {}
-          _setStatus(`Connected to ${host}`);
+          // Engine recovered — clear any previous broken-flag.
+          try { localStorage.removeItem('xmr_engine_broken'); } catch {}
           return w;
         } catch (e) {
           console.warn(`XMR node ${host} failed:`, e);
           const msg = (e?.message || e).toString();
-          _setStatus(`${host} failed: ${msg.slice(0, 80)}`, e);
+          _setStatus(`${host}: ${msg.slice(0, 80)}`, e);
           lastErr = e;
+          // If the very first attempt timed out and the user just
+          // changed the node, the WASM engine itself is the culprit
+          // — every subsequent node will hit the same 25 s wall on
+          // createWallet. Bail out instead of burning 10 × 25 s.
+          if (/timed out/i.test(msg)) {
+            wasmFailed = true;
+            break;
+          }
         }
       }
       _closeWalletState();
-      _setStatus(`All nodes failed — last error: ${(lastErr?.message || lastErr || '?').toString().slice(0, 80)}`, lastErr);
-      throw new Error('No Monero node reachable: ' + (lastErr?.message || lastErr));
+      if (wasmFailed) {
+        try { localStorage.setItem('xmr_engine_broken', '1'); } catch {}
+        _setStatus('Monero engine not working on this device. Export keys → Cake Wallet.', lastErr);
+      } else {
+        _setStatus(`All nodes failed — ${(lastErr?.message || '?').toString().slice(0, 80)}`, lastErr);
+      }
+      throw new Error('Monero sync failed: ' + (lastErr?.message || lastErr));
     })();
     return _wState.promise;
   }
