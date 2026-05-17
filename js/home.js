@@ -452,6 +452,24 @@
       setActiveAction(null);
     }
 
+    // XMR fresh-receive subaddresses section. Lives in #wd-xmr-extras
+    // which sits between this card and the "Choose another wallet"
+    // list. Cleared for non-XMR coins so it doesn't bleed across.
+    const xmrExtras = $('wd-xmr-extras');
+    if (xmrExtras) {
+      if (coin.id === 'XMR' && state.mnemonic) {
+        // renderXmrSubaddresses is idempotent — it bails if its section
+        // is already in the DOM. Clear on coin-switch so it re-renders
+        // when the user comes back to XMR after another coin.
+        if (_lastRenderedCoin !== coin.id) xmrExtras.innerHTML = '';
+        if (typeof window.renderXmrSubaddresses === 'function') {
+          window.renderXmrSubaddresses('wd-xmr-extras');
+        }
+      } else {
+        xmrExtras.innerHTML = '';
+      }
+    }
+
     // Send toggle — shows the inline send form right in the wallet view
     $('wd-send-toggle').onclick = () => {
       const form = $('wd-send-form');

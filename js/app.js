@@ -1621,26 +1621,28 @@ function _xmrSaveSubs(list) {
   try { localStorage.setItem('xmr.subaddresses', JSON.stringify(list)); } catch {}
 }
 
-async function renderXmrSubaddresses() {
+window.renderXmrSubaddresses = renderXmrSubaddresses;
+async function renderXmrSubaddresses(targetId = 'content') {
   if (document.getElementById('xmr-subaddresses-section')) return;
   const coin = COINS.find(c => c.id === 'XMR');
   if (!coin?.deriveSubaddress || !state.mnemonic) return;
+  const target = document.getElementById(targetId);
+  if (!target) return;
 
   const section = document.createElement('div');
   section.id = 'xmr-subaddresses-section';
-  section.style.cssText = 'margin-top:16px';
+  section.className = 'card';
+  section.style.cssText = 'padding:14px';
   section.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <div style="font-size:13px;font-weight:600">Receive Addresses</div>
+      <div style="font-size:13px;font-weight:600">Fresh receive addresses (Monero)</div>
       <button class="btn btn-outline btn-sm" id="xmr-new-subaddr" style="padding:5px 10px;font-size:12px">+ New</button>
     </div>
     <div style="font-size:11px;color:var(--text2);margin-bottom:10px">
-      Fresh subaddress per payment — payers can't link them. Cake-compatible: the same subaddresses show up when you restore in Cake/Feather/GUI from your exported keys below.
+      Generate a new subaddress per payment so senders can't link them. Cake-compatible: the same subaddresses appear when you import this wallet into Cake / Feather / Monero GUI via the exported keys.
     </div>
     <div id="xmr-subaddresses-list" style="display:flex;flex-direction:column;gap:6px"></div>`;
-  // Append to #content for the same reason as xmr-keys-section above:
-  // tab-receive is now permanently hidden.
-  document.getElementById('content').appendChild(section);
+  target.appendChild(section);
 
   await _renderXmrSubaddrList();
 
