@@ -366,26 +366,60 @@ const MoneroWallet = (() => {
         restoreHeight = Math.max(0, tip - 5000);
         try { localStorage.setItem('xmr_restore_height', String(restoreHeight)); } catch {}
       }
+      // Remember which node worked last so we try it first next time —
+      // saves cycling through 10 failures every restart.
+      const preferred = localStorage.getItem('xmr_last_good_node') || '';
+      const nodes = preferred
+        ? [preferred, ..._nodeList().filter(n => n !== preferred)]
+        : _nodeList();
+
       let lastErr;
-      for (const node of _nodeList()) {
+      for (const node of nodes) {
         const host = (() => { try { return new URL(node).host; } catch { return node; } })();
         try {
-          _setStatus(`Connecting to ${host}…`);
-          // 30 s timeout so a hung wallet-creation call doesn't
-          // permanently freeze the UI on '…XMR'. If it hits, we
-          // move on to the next node.
+          _setStatus(`Building wallet for ${host}…`);
+          // Step 1: create the wallet WITHOUT a daemon. This part is
+          // pure WASM init + key derivation, no network. Doing it
+          // first lets us isolate WASM-init failures from
+          // daemon-connection failures.
           const w = await _withTimeout(
             MoneroWalletFull.createWallet({
               networkType: 0,
               privateSpendKey: spendKeyHex,
-              server: node,
               restoreHeight,
-              proxyToWorker: true,
+              // proxyToWorker: false runs the WASM on the main thread.
+              // proxyToWorker: true was hanging in the Capacitor
+              // WebView — the worker context apparently can't reach
+              // the network reliably from monero-javascript's bundled
+              // HTTP client. Main thread blocks the UI briefly during
+              // sync but actually works.
+              proxyToWorker: false,
             }),
-            30_000,
-            `createWallet via ${host}`
+            20_000,
+            `wallet build via ${host}`
           );
-          _setStatus(`Connected to ${host}, starting sync…`);
+
+          // Step 2: attach the daemon. Separate from createWallet so a
+          // network/CORS failure here can't be mistaken for a WASM
+          // initialisation failure.
+          _setStatus(`Attaching daemon ${host}…`);
+          try {
+            await _withTimeout(
+              w.setDaemonConnection({ uri: node }),
+              15_000,
+              `setDaemonConnection ${host}`
+            );
+          } catch (e) {
+            // Fallback: some library versions expose .setDaemon
+            // instead. Try that before giving up.
+            if (typeof w.setDaemon === 'function') {
+              await _withTimeout(w.setDaemon(node), 15_000, `setDaemon ${host}`);
+            } else {
+              throw e;
+            }
+          }
+
+          _setStatus(`Starting sync via ${host}…`);
           try {
             await w.addListener({
               onSyncProgress: (_h, _s, _e, pct) => {
@@ -396,15 +430,19 @@ const MoneroWallet = (() => {
             });
           } catch (e) { /* listener API may vary across builds */ }
           await w.startSyncing(60_000);
+          // Remember this one for next time.
+          try { localStorage.setItem('xmr_last_good_node', node); } catch {}
+          _setStatus(`Connected to ${host}`);
           return w;
         } catch (e) {
           console.warn(`XMR node ${host} failed:`, e);
-          _setStatus(`${host}: ${(e?.message || e).toString().slice(0, 60)}`, e);
+          const msg = (e?.message || e).toString();
+          _setStatus(`${host} failed: ${msg.slice(0, 80)}`, e);
           lastErr = e;
         }
       }
       _closeWalletState();
-      _setStatus(`All nodes failed — try a different one in Settings`, lastErr);
+      _setStatus(`All nodes failed — last error: ${(lastErr?.message || lastErr || '?').toString().slice(0, 80)}`, lastErr);
       throw new Error('No Monero node reachable: ' + (lastErr?.message || lastErr));
     })();
     return _wState.promise;
