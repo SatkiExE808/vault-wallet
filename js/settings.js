@@ -335,17 +335,59 @@
         <input type="text" id="xmr-node-input" value="${current}" placeholder="https://your.node:18089" autocomplete="off" autocapitalize="off" spellcheck="false" style="font-family:ui-monospace,monospace;font-size:12px">
       </div>
       <p id="xmr-node-err" style="color:var(--red);font-size:13px;min-height:18px"></p>
-      <div class="modal-actions">
+      <div id="xmr-node-test-result" style="font-size:12px;font-family:ui-monospace,monospace;color:var(--text2);margin:-6px 0 8px;min-height:18px;word-break:break-word"></div>
+      <div class="modal-actions" style="grid-template-columns:1fr 1fr 1fr">
         <button class="btn btn-outline" id="xmr-node-cancel">Cancel</button>
-        <button class="btn btn-primary" id="xmr-node-save">Save & Reconnect</button>
+        <button class="btn btn-outline" id="xmr-node-test">Test</button>
+        <button class="btn btn-primary" id="xmr-node-save">Save</button>
       </div>
     `, (root, close) => {
       const input = root.querySelector('#xmr-node-input');
       const err = root.querySelector('#xmr-node-err');
+      const result = root.querySelector('#xmr-node-test-result');
       root.querySelectorAll('input[name="xmr-node-preset"]').forEach(r => {
-        r.addEventListener('change', () => { input.value = r.value; });
+        r.addEventListener('change', () => { input.value = r.value; result.textContent = ''; });
       });
       root.querySelector('#xmr-node-cancel').onclick = close;
+      root.querySelector('#xmr-node-test').onclick = async () => {
+        err.textContent = '';
+        const url = (input.value || 'https://xmr-node.cakewallet.com:18081').trim();
+        result.style.color = 'var(--text2)';
+        result.textContent = `Testing ${url} …`;
+        const started = Date.now();
+        try {
+          const r = await fetch(url.replace(/\/+$/, '') + '/json_rpc', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', id: '0', method: 'get_block_count' }),
+          });
+          const dt = Date.now() - started;
+          if (!r.ok) {
+            result.style.color = 'var(--red)';
+            result.textContent = `✗ HTTP ${r.status} in ${dt}ms — node returned an error`;
+            return;
+          }
+          const d = await r.json();
+          if (d.result?.count) {
+            result.style.color = 'var(--green, #10b981)';
+            result.textContent = `✓ Reachable. Tip ${d.result.count.toLocaleString()}, ${dt}ms`;
+          } else {
+            result.style.color = 'var(--red)';
+            result.textContent = `✗ Unexpected response: ${JSON.stringify(d).slice(0, 120)}`;
+          }
+        } catch (e) {
+          const dt = Date.now() - started;
+          result.style.color = 'var(--red)';
+          const msg = (e && (e.message || e.name || String(e))) || 'unknown';
+          // Friendly CORS / network-block hint — these are the most
+          // common reasons a node that works in Cake fails in Vault.
+          let hint = '';
+          if (/Failed to fetch|TypeError|NetworkError|Load failed/i.test(msg)) {
+            hint = ' (likely blocked by CORS or the network — see iamhch proxy option)';
+          }
+          result.textContent = `✗ ${msg} after ${dt}ms${hint}`;
+        }
+      };
       root.querySelector('#xmr-node-save').onclick = () => {
         const v = input.value.trim();
         if (v) {
