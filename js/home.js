@@ -115,19 +115,17 @@
     const active = applyOrder(activeRaw);
     const cats = [...new Set(active.map(c => c.category))];
     let html = '';
-    cats.forEach((cat, catIdx) => {
+    cats.forEach(cat => {
       const group = active.filter(c => c.category === cat);
-      const isFirstCat = catIdx === 0, isLastCat = catIdx === cats.length - 1;
-      html += `<div class="network-group">`;
+      const handle = editMode
+        ? `<span class="cat-drag-handle" aria-label="Reorder ${cat}" style="cursor:grab;font-size:22px;color:var(--text3);padding:2px 10px;user-select:none;touch-action:none;line-height:1">≡</span>`
+        : '';
+      html += `<div class="network-group" data-cat="${cat}">`;
       html += `<div class="network-header">
         <span>${cat}</span>
-        ${editMode ? `
-          <div class="reorder-controls">
-            <button class="reorder-btn" data-move="up"   data-cat="${cat}" ${isFirstCat ? 'disabled' : ''}>▲</button>
-            <button class="reorder-btn" data-move="down" data-cat="${cat}" ${isLastCat ? 'disabled' : ''}>▼</button>
-          </div>` : ''}
+        ${handle}
       </div>`;
-      html += `<div class="network-card" data-cat="${cat}">`;
+      html += `<div class="network-card">`;
       html += group.map(coin => {
         const bal = state.balances[coin.id] ?? '…';
         const usd = formatUSD(bal, state.prices[coin.id]) || '';
@@ -136,12 +134,8 @@
         const progress = renderProgressPills(coin.id);
         const balText = (typeof window.displayBalance === 'function')
           ? window.displayBalance(coin) : `${bal} ${coin.symbol}`;
-        const handle = editMode
-          ? `<span class="drag-handle" aria-label="Reorder ${coin.name}" style="cursor:grab;font-size:20px;color:var(--text3);padding:0 8px 0 2px;user-select:none;touch-action:none">≡</span>`
-          : '';
         return `
           <div class="asset-item" data-coin="${coin.id}">
-            ${handle}
             <div class="asset-icon">
               <img src="${coin.icon}" alt="">
             </div>
@@ -160,31 +154,21 @@
     });
     list.innerHTML = html;
 
-    list.querySelectorAll('.reorder-btn[data-cat]').forEach(btn => {
-      btn.onclick = e => {
-        e.stopPropagation();
-        if (btn.disabled) return;
-        moveCategory(btn.dataset.cat, btn.dataset.move);
-      };
-    });
-
-    // Drag-to-reorder within each category. Active only in Edit mode so
-    // ordinary taps never grab. Coin order persists via saveCoinOrder
-    // (defined in app.js, exposed on window) — same key Manage Assets
-    // used before the drag UI moved here.
+    // Drag whole categories to reorder. Grab the ≡ on the category header
+    // and drop anywhere in the list — saves the new category order so the
+    // home list, the wallet picker, and Manage Assets all pick it up.
     if (editMode && typeof Sortable !== 'undefined') {
-      list.querySelectorAll('.network-card[data-cat]').forEach(group => {
-        Sortable.create(group, {
-          handle: '.drag-handle',
-          animation: 150,
-          ghostClass: 'asset-item-ghost',
-          onEnd: () => {
-            const ids = [...list.querySelectorAll('.asset-item[data-coin]')]
-              .map(r => r.dataset.coin);
-            if (typeof window.saveCoinOrder === 'function') window.saveCoinOrder(ids);
-            try { if (typeof renderCoinList === 'function') renderCoinList(); } catch {}
-          },
-        });
+      Sortable.create(list, {
+        handle: '.cat-drag-handle',
+        draggable: '.network-group',
+        animation: 150,
+        ghostClass: 'network-group-ghost',
+        onEnd: () => {
+          const order = [...list.querySelectorAll('.network-group[data-cat]')]
+            .map(g => g.dataset.cat);
+          saveCatOrder(order);
+          try { if (typeof renderCoinList === 'function') renderCoinList(); } catch {}
+        },
       });
     }
     // Home asset list is display-only outside Edit mode — no navigation
