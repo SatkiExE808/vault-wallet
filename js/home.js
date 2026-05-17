@@ -158,6 +158,11 @@
     // and drop anywhere in the list — saves the new category order so the
     // home list, the wallet picker, and Manage Assets all pick it up.
     if (editMode && typeof Sortable !== 'undefined') {
+      // Tear down any previous Sortable on this element before
+      // re-attaching — re-renders would otherwise stack multiple
+      // instances, and the older ones can fight the new drop position
+      // and bounce the item back to its original slot.
+      try { Sortable.get(list)?.destroy(); } catch {}
       Sortable.create(list, {
         handle: '.cat-drag-handle',
         draggable: '.network-group',
@@ -167,7 +172,12 @@
           const order = [...list.querySelectorAll('.network-group[data-cat]')]
             .map(g => g.dataset.cat);
           saveCatOrder(order);
-          try { if (typeof renderCoinList === 'function') renderCoinList(); } catch {}
+          // Don't trigger renderCoinList here — the patched version in
+          // patchApp() chains into updateHome → renderAssetList, which
+          // re-renders #asset-list while Sortable is mid-cleanup and
+          // visually snaps the dragged category back to its old slot.
+          // The DOM is already in the new order; the saved order will
+          // be picked up by the next natural refresh.
         },
       });
     }
