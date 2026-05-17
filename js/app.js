@@ -1618,7 +1618,10 @@ function updateReceiveTab() {
           <button class="btn btn-outline btn-sm" data-action="copy-xmr-key" data-target="xmr-view-key">Copy</button>
         </div>
       </div>`;
-    document.getElementById('tab-receive').appendChild(section);
+    // Append to #content (visible coin page wrapper). #tab-receive is
+    // permanently display:none now that the QR/address moved to the
+    // always-visible top section — appending there would hide the keys.
+    document.getElementById('content').appendChild(section);
 
     // (xmr-keys-toggle handler follows immediately below)
     document.getElementById('xmr-keys-toggle').onclick = async () => {
@@ -1685,7 +1688,9 @@ async function renderXmrSubaddresses() {
       Fresh subaddress per payment — payers can't link them. Cake-compatible: the same subaddresses show up when you restore in Cake/Feather/GUI from your exported keys below.
     </div>
     <div id="xmr-subaddresses-list" style="display:flex;flex-direction:column;gap:6px"></div>`;
-  document.getElementById('tab-receive').appendChild(section);
+  // Append to #content for the same reason as xmr-keys-section above:
+  // tab-receive is now permanently hidden.
+  document.getElementById('content').appendChild(section);
 
   await _renderXmrSubaddrList();
 
