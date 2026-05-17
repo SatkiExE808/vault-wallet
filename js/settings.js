@@ -309,6 +309,7 @@
   async function showMoneroNode() {
     const current = _xmrCustomNode();
     const presets = [
+      ['iamhch proxy (recommended)', 'https://xmr-rpc.iamhch.com'],
       ['Auto (try all)', ''],
       ['Cake — xmr-node.cakewallet.com', 'https://xmr-node.cakewallet.com:18081'],
       ['Seth — node.sethforprivacy.com', 'https://node.sethforprivacy.com:443'],

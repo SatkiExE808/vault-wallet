@@ -153,10 +153,15 @@ const MoneroWallet = (() => {
     return Array.from(scToBytes(privSpend)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  // Try port 443 hosts first — those bypass corporate / ISP filters that
-  // drop the non-standard Monero ports (18081 / 18089). The rest are
-  // well-maintained Cake / Feather / Monero community nodes.
+  // First-try: our own CORS-friendly proxy on EYE-HCH. Public Monero
+  // daemons don't send Access-Control-Allow-Origin on the binary
+  // endpoints (/getblocks.bin etc.) used during sync, so the WASM
+  // engine inside a WebView silently fails on them even when /json_rpc
+  // works. The iamhch proxy strips Origin and injects permissive CORS,
+  // backed by xmr-node.cakewallet.com:18081.
+  // The remaining entries are fallbacks for when the proxy is down.
   const PUBLIC_NODES = [
+    'https://xmr-rpc.iamhch.com',
     'https://node.sethforprivacy.com:443',
     'https://xmr-node.cakewallet.com:18081',
     'https://xmr.stormycloud.org:18089',
