@@ -127,7 +127,7 @@
             <button class="reorder-btn" data-move="down" data-cat="${cat}" ${isLastCat ? 'disabled' : ''}>▼</button>
           </div>` : ''}
       </div>`;
-      html += `<div class="network-card">`;
+      html += `<div class="network-card" data-cat="${cat}">`;
       html += group.map(coin => {
         const bal = state.balances[coin.id] ?? '…';
         const usd = formatUSD(bal, state.prices[coin.id]) || '';
@@ -136,8 +136,12 @@
         const progress = renderProgressPills(coin.id);
         const balText = (typeof window.displayBalance === 'function')
           ? window.displayBalance(coin) : `${bal} ${coin.symbol}`;
+        const handle = editMode
+          ? `<span class="drag-handle" aria-label="Reorder ${coin.name}" style="cursor:grab;font-size:20px;color:var(--text3);padding:0 8px 0 2px;user-select:none;touch-action:none">≡</span>`
+          : '';
         return `
           <div class="asset-item" data-coin="${coin.id}">
+            ${handle}
             <div class="asset-icon">
               <img src="${coin.icon}" alt="">
             </div>
@@ -163,8 +167,28 @@
         moveCategory(btn.dataset.cat, btn.dataset.move);
       };
     });
-    // Home asset list is display-only — no navigation on tap.
-    // To send/receive, the user goes to the Wallets tab.
+
+    // Drag-to-reorder within each category. Active only in Edit mode so
+    // ordinary taps never grab. Coin order persists via saveCoinOrder
+    // (defined in app.js, exposed on window) — same key Manage Assets
+    // used before the drag UI moved here.
+    if (editMode && typeof Sortable !== 'undefined') {
+      list.querySelectorAll('.network-card[data-cat]').forEach(group => {
+        Sortable.create(group, {
+          handle: '.drag-handle',
+          animation: 150,
+          ghostClass: 'asset-item-ghost',
+          onEnd: () => {
+            const ids = [...list.querySelectorAll('.asset-item[data-coin]')]
+              .map(r => r.dataset.coin);
+            if (typeof window.saveCoinOrder === 'function') window.saveCoinOrder(ids);
+            try { if (typeof renderCoinList === 'function') renderCoinList(); } catch {}
+          },
+        });
+      });
+    }
+    // Home asset list is display-only outside Edit mode — no navigation
+    // on tap. To send/receive, the user goes to the Wallets tab.
   }
 
   function updateTotalBalance() {

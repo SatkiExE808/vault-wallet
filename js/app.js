@@ -971,7 +971,7 @@ function saveEnabledCoins() {
 }
 
 // Persistent user-defined coin order — drives both the home asset list
-// and the Manage Assets list. Set via drag-to-reorder in Manage Assets;
+// and the Manage Assets list. Set via drag-to-reorder in Home Edit mode;
 // unknown ids fall back to the COINS-array order so newly-added coins
 // land at the end of any old saved order.
 function loadCoinOrder() {
@@ -987,6 +987,7 @@ function loadCoinOrder() {
 function saveCoinOrder(ids) {
   try { localStorage.setItem('coin_order', JSON.stringify(ids)); } catch {}
 }
+window.saveCoinOrder = saveCoinOrder;
 function _orderedCoins(arr) {
   const order = loadCoinOrder();
   if (!order.length) return arr;
@@ -2300,7 +2301,6 @@ function renderSettingsList() {
       const on = enabledCoins.has(coin.id);
       return `
         <div class="settings-row" data-coin-id="${coin.id}">
-          <span class="drag-handle" aria-label="Reorder ${escapeHtml(coin.name)}" style="cursor:grab;font-size:18px;color:var(--text3);padding:0 6px;user-select:none;touch-action:none">≡</span>
           <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
             <img src="${coin.icon}" alt="${coin.symbol}" width="28" height="28"
               style="border-radius:50%;flex-shrink:0">
@@ -2330,34 +2330,6 @@ function renderSettingsList() {
 </div>`;
   document.getElementById('settings-coin-list').innerHTML = html;
   loadLegacyRecovery();
-
-  // Drag-to-reorder: each category group is independently sortable.
-  // After any drop, collect coin IDs in DOM order across ALL groups
-  // and persist as the canonical coin_order. Home asset list + bottom
-  // coin picker re-render to pick up the new order.
-  //
-  // Keep config minimal — forceFallback + delay options that "should
-  // help touch" were actually breaking it on Android WebView in
-  // practice. The defaults handle pointer events fine and the handle
-  // selector blocks accidental drag from the toggle/label area.
-  if (typeof Sortable !== 'undefined') {
-    document.querySelectorAll('#settings-coin-list .settings-cat-group').forEach(group => {
-      Sortable.create(group, {
-        handle: '.drag-handle',
-        animation: 150,
-        ghostClass: 'settings-row-ghost',
-        onEnd: () => {
-          const ids = [...document.querySelectorAll('#settings-coin-list .settings-row[data-coin-id]')]
-            .map(r => r.dataset.coinId);
-          saveCoinOrder(ids);
-          try { if (typeof updateHome === 'function') updateHome(); } catch {}
-          try { if (typeof renderCoinList === 'function') renderCoinList(); } catch {}
-        },
-      });
-    });
-  } else {
-    console.warn('SortableJS not loaded — drag-to-reorder unavailable');
-  }
 }
 
 async function confirmResetWallet() {
