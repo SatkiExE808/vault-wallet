@@ -288,6 +288,85 @@
     });
   }
 
+  // ── Custom Monero node ─────────────────────────────────────
+  // Empty string = use Vault's built-in node list. Setting this lets
+  // the user point at a node they know works on their network.
+  function _xmrCustomNode() {
+    return (localStorage.getItem('xmr_custom_node') || '').trim();
+  }
+  function refreshXmrNodeLabel() {
+    const el = $('menu-xmr-node-value');
+    if (!el) return;
+    const v = _xmrCustomNode();
+    let label;
+    if (!v) label = 'Auto';
+    else {
+      try { label = new URL(v).hostname; } catch { label = 'Custom'; }
+    }
+    el.textContent = `${label} ›`;
+  }
+
+  async function showMoneroNode() {
+    const current = _xmrCustomNode();
+    const presets = [
+      ['Auto (try all)', ''],
+      ['Cake — xmr-node.cakewallet.com', 'https://xmr-node.cakewallet.com:18081'],
+      ['Seth — node.sethforprivacy.com', 'https://node.sethforprivacy.com:443'],
+      ['StormyCloud — xmr.stormycloud.org', 'https://xmr.stormycloud.org:18089'],
+      ['Rino — node.community.rino.io', 'https://node.community.rino.io:18089'],
+      ['Feather — selsta1.featherwallet.net', 'https://selsta1.featherwallet.net:18081'],
+    ];
+    const presetRows = presets.map(([label, url], i) => `
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 4px;font-size:13px;cursor:pointer">
+        <input type="radio" name="xmr-node-preset" value="${url}" ${url === current ? 'checked' : ''} style="margin:0">
+        <span style="flex:1">
+          <div style="font-weight:600">${label}</div>
+          ${url ? `<div style="font-size:11px;color:var(--text2);word-break:break-all">${url}</div>` : ''}
+        </span>
+      </label>`).join('');
+    modal(`
+      <h2>Monero Node</h2>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:10px">
+        Pick a daemon for Monero balance + sync. <b>Auto</b> tries Vault's built-in list. If your network blocks Monero ports, try the <b>Seth</b> preset (port 443) — it often works through firewalls.
+      </p>
+      ${presetRows}
+      <div class="form-group" style="margin-top:12px">
+        <label>Custom URL (overrides preset)</label>
+        <input type="text" id="xmr-node-input" value="${current}" placeholder="https://your.node:18089" autocomplete="off" autocapitalize="off" spellcheck="false" style="font-family:ui-monospace,monospace;font-size:12px">
+      </div>
+      <p id="xmr-node-err" style="color:var(--red);font-size:13px;min-height:18px"></p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="xmr-node-cancel">Cancel</button>
+        <button class="btn btn-primary" id="xmr-node-save">Save & Reconnect</button>
+      </div>
+    `, (root, close) => {
+      const input = root.querySelector('#xmr-node-input');
+      const err = root.querySelector('#xmr-node-err');
+      root.querySelectorAll('input[name="xmr-node-preset"]').forEach(r => {
+        r.addEventListener('change', () => { input.value = r.value; });
+      });
+      root.querySelector('#xmr-node-cancel').onclick = close;
+      root.querySelector('#xmr-node-save').onclick = () => {
+        const v = input.value.trim();
+        if (v) {
+          try {
+            const u = new URL(v);
+            if (!/^https?:$/.test(u.protocol)) throw new Error('Must start with https:// or http://');
+          } catch (e) {
+            err.textContent = e.message || 'Invalid URL';
+            return;
+          }
+        }
+        localStorage.setItem('xmr_custom_node', v);
+        try { (window.MoneroWallet || MoneroWallet)?.resetSync?.(); } catch {}
+        refreshXmrNodeLabel();
+        toast(v ? 'Monero node set — reconnecting' : 'Using auto node selection');
+        close();
+        try { if (typeof refreshBalances === 'function') refreshBalances(); } catch {}
+      };
+    });
+  }
+
   // ── Change password ────────────────────────────────────────
   function changePassword() {
     passwordModal({
@@ -1135,6 +1214,7 @@
     $('menu-show-seed')?.addEventListener('click', showSeed);
     $('menu-show-xmr-keys')?.addEventListener('click', showMoneroKeys);
     $('menu-xmr-restore-height')?.addEventListener('click', showMoneroRestoreHeight);
+    $('menu-xmr-node')?.addEventListener('click', showMoneroNode);
     $('menu-change-pwd')?.addEventListener('click', changePassword);
     $('menu-manage-assets')?.addEventListener('click', showManageAssets);
     $('menu-currency')?.addEventListener('click', showCurrencyPicker);
@@ -1151,6 +1231,7 @@
     refresh2FALabel();
     refreshPassphraseLabel();
     refreshXmrRestoreLabel();
+    refreshXmrNodeLabel();
     renderSettingsTab();
   }
 

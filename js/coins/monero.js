@@ -153,11 +153,30 @@ const MoneroWallet = (() => {
     return Array.from(scToBytes(privSpend)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
+  // Try port 443 hosts first — those bypass corporate / ISP filters that
+  // drop the non-standard Monero ports (18081 / 18089). The rest are
+  // well-maintained Cake / Feather / Monero community nodes.
   const PUBLIC_NODES = [
-    'https://node.community.rino.io:18089',
+    'https://node.sethforprivacy.com:443',
     'https://xmr-node.cakewallet.com:18081',
+    'https://xmr.stormycloud.org:18089',
+    'https://node.community.rino.io:18089',
+    'https://selsta1.featherwallet.net:18081',
+    'https://node.monerodevs.org:18089',
     'https://monero.stackwallet.com:18081',
+    'https://node2.monerodevs.org:18089',
+    'https://node3.monerodevs.org:18089',
   ];
+
+  // User-configurable override. If set, gets tried before any public
+  // node so the user can point at their own node or one they know
+  // works on their network.
+  function _nodeList() {
+    const custom = (typeof localStorage !== 'undefined')
+      ? (localStorage.getItem('xmr_custom_node') || '').trim()
+      : '';
+    return custom ? [custom, ...PUBLIC_NODES] : PUBLIC_NODES;
+  }
 
   async function sendXMR(mnemonic, toAddress, amount, _restoreHeight, onProgress) {
     // Reuse the cached local-sync wallet so we don't pay the
@@ -187,7 +206,7 @@ const MoneroWallet = (() => {
   }
 
   async function getCurrentHeight() {
-    for (const node of PUBLIC_NODES) {
+    for (const node of _nodeList()) {
       try {
         const r = await fetch(node + '/json_rpc', {
           method: 'POST',
@@ -324,7 +343,7 @@ const MoneroWallet = (() => {
         try { localStorage.setItem('xmr_restore_height', String(restoreHeight)); } catch {}
       }
       let lastErr;
-      for (const node of PUBLIC_NODES) {
+      for (const node of _nodeList()) {
         try {
           const w = await MoneroWalletFull.createWallet({
             networkType: 0,
