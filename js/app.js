@@ -1595,59 +1595,9 @@ function updateReceiveTab() {
   if (coin?.id === 'XMR' && coin?.deriveSubaddress && state.mnemonic) {
     renderXmrSubaddresses();
   }
-  if (coin?.exportKeys && state.mnemonic) {
-    const section = document.createElement('div');
-    section.id = 'xmr-keys-section';
-    section.style.cssText = 'margin-top:16px';
-    section.innerHTML = `
-      <button class="btn btn-outline btn-sm" id="xmr-keys-toggle" style="width:100%">
-        Show keys for other Monero wallets
-      </button>
-      <div id="xmr-keys-content" style="display:none;margin-top:12px">
-        <div class="warning-box" style="margin-bottom:12px;font-size:12px">
-          ⚠ Keep these private. Use them to import into Cake Wallet, Feather, or Monero GUI via "Restore from private key".
-        </div>
-        <div style="font-size:12px;color:var(--text2);margin-bottom:4px">Private Spend Key</div>
-        <div class="address-box" style="margin-top:0;margin-bottom:10px">
-          <code id="xmr-spend-key" style="font-size:11px">Loading…</code>
-          <button class="btn btn-outline btn-sm" data-action="copy-xmr-key" data-target="xmr-spend-key">Copy</button>
-        </div>
-        <div style="font-size:12px;color:var(--text2);margin-bottom:4px">Private View Key</div>
-        <div class="address-box" style="margin-top:0">
-          <code id="xmr-view-key" style="font-size:11px">Loading…</code>
-          <button class="btn btn-outline btn-sm" data-action="copy-xmr-key" data-target="xmr-view-key">Copy</button>
-        </div>
-      </div>`;
-    // Append to #content (visible coin page wrapper). #tab-receive is
-    // permanently display:none now that the QR/address moved to the
-    // always-visible top section — appending there would hide the keys.
-    document.getElementById('content').appendChild(section);
-
-    // (xmr-keys-toggle handler follows immediately below)
-    document.getElementById('xmr-keys-toggle').onclick = async () => {
-      const content = document.getElementById('xmr-keys-content');
-      const btn = document.getElementById('xmr-keys-toggle');
-      if (content.style.display === 'none') {
-        // Gate on biometric/password (+ 2FA if configured) before
-        // exposing the spend key — a shoulder-surfer with an unlocked
-        // phone could otherwise copy the spend key and drain XMR from
-        // a separately-restored wallet (M-T4).
-        if (document.getElementById('xmr-spend-key').textContent === 'Loading…') {
-          try {
-            if (typeof verifyAuth === 'function') await verifyAuth('Show Monero private keys');
-          } catch { return; }
-          const keys = await coin.exportKeys(state.mnemonic);
-          document.getElementById('xmr-spend-key').textContent = keys.spendKey;
-          document.getElementById('xmr-view-key').textContent  = keys.viewKey;
-        }
-        content.style.display = 'block';
-        btn.textContent = 'Hide keys';
-      } else {
-        content.style.display = 'none';
-        btn.textContent = 'Show keys for other Monero wallets';
-      }
-    };
-  }
+  // XMR key export now lives in Settings → Security → Show Monero Keys
+  // (see settings.js showMoneroKeys). The old in-coin-page button was
+  // intermittently invisible due to a hidden #tab-receive container.
 }
 
 function copyXmrKey(elId) {

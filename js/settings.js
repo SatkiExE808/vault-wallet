@@ -154,6 +154,68 @@
     });
   }
 
+  // ── Show Monero private keys (for importing into Cake / Feather / GUI) ──
+  function showMoneroKeys() {
+    if (typeof MoneroWallet === 'undefined' && typeof window.MoneroWallet === 'undefined') {
+      toast('Monero engine not loaded — try again in a moment');
+      return;
+    }
+    const xmr = window.MoneroWallet || MoneroWallet;
+    passwordModal({
+      title: '🔑 Show Monero Keys',
+      message: 'Enter your password to reveal the Monero <strong>spend key</strong> and <strong>view key</strong>. Anyone with the spend key can take your XMR — treat it like the recovery phrase.',
+      onSubmit: async (_pwd, closeFirst) => {
+        closeFirst();
+        const coin = (typeof COINS !== 'undefined') ? COINS.find(c => c.id === 'XMR') : null;
+        const address = state.addresses?.XMR || (coin ? await coin.derive(state.mnemonic) : '');
+        let spendKey = '…', viewKey = '…';
+        try {
+          spendKey = await xmr.deriveSpendKeyHex(state.mnemonic);
+          viewKey  = await xmr.deriveViewKeyHex(state.mnemonic);
+        } catch (e) {
+          toast('Failed to derive Monero keys: ' + (e.message || e));
+          return;
+        }
+        modal(`
+          <h2>Monero Keys</h2>
+          <div class="warning-box">
+            ⚠️ Anyone with the <b>spend key</b> can drain your XMR. Don't paste it on any website. Use these in Cake Wallet / Feather / Monero GUI via <b>Restore from keys</b>.
+          </div>
+          <div style="font-size:12px;color:var(--text2);margin:14px 0 4px">Primary Address</div>
+          <div class="address-box" style="margin-top:0;margin-bottom:10px">
+            <code id="xmr-addr-text" style="font-size:11px;word-break:break-all">${address || '—'}</code>
+            <button class="btn btn-outline btn-sm" id="xmr-copy-addr">Copy</button>
+          </div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:4px">Private Spend Key</div>
+          <div class="address-box" style="margin-top:0;margin-bottom:10px">
+            <code id="xmr-spend-text" style="font-size:11px;word-break:break-all">${spendKey}</code>
+            <button class="btn btn-outline btn-sm" id="xmr-copy-spend">Copy</button>
+          </div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:4px">Private View Key</div>
+          <div class="address-box" style="margin-top:0;margin-bottom:10px">
+            <code id="xmr-view-text" style="font-size:11px;word-break:break-all">${viewKey}</code>
+            <button class="btn btn-outline btn-sm" id="xmr-copy-view">Copy</button>
+          </div>
+          <div style="font-size:11px;color:var(--text2);margin-top:6px">
+            Restore height: see Settings → Monero Restore Height (use a value <em>before</em> your first XMR receipt).
+          </div>
+          <div class="modal-actions" style="grid-template-columns:1fr;margin-top:14px">
+            <button class="btn btn-outline" id="xmr-keys-done">Done</button>
+          </div>
+        `, (root, close) => {
+          const copy = (text, label) => async () => {
+            try { await navigator.clipboard.writeText(text); toast(`${label} copied`); }
+            catch { toast('Copy failed'); }
+          };
+          root.querySelector('#xmr-copy-addr').onclick  = copy(address, 'Address');
+          root.querySelector('#xmr-copy-spend').onclick = copy(spendKey, 'Spend key');
+          root.querySelector('#xmr-copy-view').onclick  = copy(viewKey,  'View key');
+          root.querySelector('#xmr-keys-done').onclick  = close;
+        });
+      },
+    });
+  }
+
   // ── Change password ────────────────────────────────────────
   function changePassword() {
     passwordModal({
@@ -999,6 +1061,7 @@
 
   function wire() {
     $('menu-show-seed')?.addEventListener('click', showSeed);
+    $('menu-show-xmr-keys')?.addEventListener('click', showMoneroKeys);
     $('menu-change-pwd')?.addEventListener('click', changePassword);
     $('menu-manage-assets')?.addEventListener('click', showManageAssets);
     $('menu-currency')?.addEventListener('click', showCurrencyPicker);
