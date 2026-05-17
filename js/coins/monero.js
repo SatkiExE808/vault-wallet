@@ -387,7 +387,11 @@ const MoneroWallet = (() => {
 
   return { deriveAddress, deriveSubaddress, deriveViewKey, deriveViewKeyHex,
            deriveSpendKeyHex, getBalance, getSyncProgressPct,
-           sendXMR, getCurrentHeight };
+           sendXMR, getCurrentHeight,
+           // Called from Settings when the user changes the restore
+           // height. Drops the cached wallet so the next balance refresh
+           // re-creates one against the new height.
+           resetSync: _closeWalletState };
 })();
 // Expose on window so displayBalance() in app.js can poll
 // getSyncProgressPct without relying on lexical script scope —

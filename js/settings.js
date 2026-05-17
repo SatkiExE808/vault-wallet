@@ -216,6 +216,78 @@
     });
   }
 
+  // ── Monero restore height ──────────────────────────────────
+  // Saved as `xmr_restore_height` (a Monero block number). The local
+  // sync worker scans from this height forward. Lower = slower first
+  // sync but won't miss old receipts. Higher = faster but misses
+  // anything before that block.
+  function _xmrRestoreHeight() {
+    return parseInt(localStorage.getItem('xmr_restore_height') || '0') || 0;
+  }
+  function refreshXmrRestoreLabel() {
+    const el = $('menu-xmr-restore-value');
+    if (!el) return;
+    const v = _xmrRestoreHeight();
+    el.textContent = (v ? v.toLocaleString() : 'auto') + ' ›';
+  }
+
+  async function showMoneroRestoreHeight() {
+    const xmr = window.MoneroWallet || (typeof MoneroWallet !== 'undefined' ? MoneroWallet : null);
+    const current = _xmrRestoreHeight();
+    let tip = '?';
+    if (xmr?.getCurrentHeight) {
+      try { tip = await xmr.getCurrentHeight(); } catch {}
+    }
+    modal(`
+      <h2>Monero Restore Height</h2>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
+        The block number the wallet starts scanning from. Pick a block <em>before</em> your first XMR was received. Set to <b>0</b> to scan from the genesis block (very slow).
+      </p>
+      <div class="form-group">
+        <label>Current</label>
+        <input type="text" value="${current ? current.toLocaleString() : '0 (auto)'}" disabled>
+      </div>
+      <div class="form-group">
+        <label>Current network tip</label>
+        <input type="text" value="${typeof tip === 'number' ? tip.toLocaleString() : tip}" disabled>
+      </div>
+      <div class="form-group">
+        <label>New restore height</label>
+        <input type="number" id="xmr-h-input" min="0" placeholder="e.g. ${typeof tip === 'number' ? Math.max(0, tip - 5000) : '3700000'}" inputmode="numeric">
+      </div>
+      <p id="xmr-h-err" style="color:var(--red);font-size:13px;min-height:18px"></p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="xmr-h-cancel">Cancel</button>
+        <button class="btn btn-primary" id="xmr-h-save">Save & Resync</button>
+      </div>
+    `, (root, close) => {
+      root.querySelector('#xmr-h-cancel').onclick = close;
+      root.querySelector('#xmr-h-save').onclick = () => {
+        const err = root.querySelector('#xmr-h-err');
+        const raw = root.querySelector('#xmr-h-input').value.trim();
+        const n = raw === '' ? null : parseInt(raw, 10);
+        if (n === null || !Number.isFinite(n) || n < 0) {
+          err.textContent = 'Enter a non-negative block number.';
+          return;
+        }
+        if (typeof tip === 'number' && n > tip) {
+          err.textContent = `Height ${n} is past the current tip ${tip}.`;
+          return;
+        }
+        localStorage.setItem('xmr_restore_height', String(n));
+        // Drop the cached wallet so the next balance refresh re-creates
+        // one against the new height. Without this, the change wouldn't
+        // take effect until lock/unlock.
+        try { xmr?.resetSync?.(); } catch {}
+        refreshXmrRestoreLabel();
+        toast('Monero restore height set — resyncing');
+        close();
+        // Kick a refresh so "Syncing N%" shows up immediately.
+        try { if (typeof refreshBalances === 'function') refreshBalances(); } catch {}
+      };
+    });
+  }
+
   // ── Change password ────────────────────────────────────────
   function changePassword() {
     passwordModal({
@@ -1062,6 +1134,7 @@
   function wire() {
     $('menu-show-seed')?.addEventListener('click', showSeed);
     $('menu-show-xmr-keys')?.addEventListener('click', showMoneroKeys);
+    $('menu-xmr-restore-height')?.addEventListener('click', showMoneroRestoreHeight);
     $('menu-change-pwd')?.addEventListener('click', changePassword);
     $('menu-manage-assets')?.addEventListener('click', showManageAssets);
     $('menu-currency')?.addEventListener('click', showCurrencyPicker);
@@ -1077,6 +1150,7 @@
     refreshCurrencyLabel();
     refresh2FALabel();
     refreshPassphraseLabel();
+    refreshXmrRestoreLabel();
     renderSettingsTab();
   }
 
