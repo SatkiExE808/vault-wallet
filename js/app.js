@@ -2335,15 +2335,17 @@ function renderSettingsList() {
   // After any drop, collect coin IDs in DOM order across ALL groups
   // and persist as the canonical coin_order. Home asset list + bottom
   // coin picker re-render to pick up the new order.
+  //
+  // Keep config minimal — forceFallback + delay options that "should
+  // help touch" were actually breaking it on Android WebView in
+  // practice. The defaults handle pointer events fine and the handle
+  // selector blocks accidental drag from the toggle/label area.
   if (typeof Sortable !== 'undefined') {
     document.querySelectorAll('#settings-coin-list .settings-cat-group').forEach(group => {
       Sortable.create(group, {
         handle: '.drag-handle',
         animation: 150,
         ghostClass: 'settings-row-ghost',
-        forceFallback: true,    // consistent touch behavior on iOS WebView
-        delayOnTouchOnly: true,
-        delay: 80,
         onEnd: () => {
           const ids = [...document.querySelectorAll('#settings-coin-list .settings-row[data-coin-id]')]
             .map(r => r.dataset.coinId);
@@ -2353,6 +2355,8 @@ function renderSettingsList() {
         },
       });
     });
+  } else {
+    console.warn('SortableJS not loaded — drag-to-reorder unavailable');
   }
 }
 

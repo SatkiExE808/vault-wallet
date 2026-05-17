@@ -389,3 +389,9 @@ const MoneroWallet = (() => {
            deriveSpendKeyHex, getBalance, getSyncProgressPct,
            sendXMR, getCurrentHeight };
 })();
+// Expose on window so displayBalance() in app.js can poll
+// getSyncProgressPct without relying on lexical script scope —
+// const-declared top-level identifiers don't attach to window
+// in classic scripts, which is why the "Syncing N%" indicator
+// stayed stuck at "…" pre-this-line.
+if (typeof window !== 'undefined') window.MoneroWallet = MoneroWallet;
